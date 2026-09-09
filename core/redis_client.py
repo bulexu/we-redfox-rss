@@ -2,7 +2,7 @@
 import json
 import redis
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from core.config import cfg
 from core.print import print_error, print_info, print_warning
 
@@ -460,6 +460,58 @@ class RedisClient:
             print_error(f"清空 redfox 调用日志失败: {e}")
             return False
 
+    def get_redfox_daily_stats(self, days: int = 7) -> list:
+        """按天聚合 redfox 调用次数（含成功 / 失败），覆盖最近 ``days`` 天（含当天）。"""
+        try:
+            days = max(1, min(int(days or 7), 365))
+        except (TypeError, ValueError):
+            days = 7
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_dt = datetime.strptime(today, "%Y-%m-%d")
+        date_list = [
+            (today_dt - timedelta(days=offset)).strftime("%Y-%m-%d")
+            for offset in range(days - 1, -1, -1)
+        ]
+
+        if not self.is_connected:
+            print_warning("Redis未连接，返回默认每日统计信息")
+            return [
+                {"date": d, "total": 0, "success": 0, "failed": 0}
+                for d in date_list
+            ]
+
+        try:
+            pipe = self._client.pipeline(transaction=False)
+            for d in date_list:
+                pipe.get(f"werss:redfox:total:{d}")
+                pipe.get(f"werss:redfox:success:{d}")
+                pipe.get(f"werss:redfox:failed:{d}")
+            results = pipe.execute()
+
+            out: list = []
+            for idx, d in enumerate(date_list):
+                base = idx * 3
+                total = int(results[base] or 0)
+                success = int(results[base + 1] or 0)
+                failed = int(results[base + 2] or 0)
+                out.append({
+                    "date": d,
+                    "total": total,
+                    "success": success,
+                    "failed": failed,
+                })
+            return out
+        except redis.exceptions.ConnectionError as e:
+            print_error(f"Redis连接错误: {e}")
+        except Exception as e:
+            print_error(f"获取 redfox 每日统计失败: {e}")
+
+        return [
+            {"date": d, "total": 0, "success": 0, "failed": 0}
+            for d in date_list
+        ]
+
 
 class RedisCache:
     def __init__(self, key_prefix: str = "cache"):
@@ -708,4 +760,9 @@ def get_redfox_logs(limit: int = 100, offset: int = 0) -> list:
 def clear_redfox_logs() -> bool:
     """清空 redfox 调用日志与当日统计。"""
     return redis_client.clear_redfox_logs()
+
+
+def get_redfox_daily_stats(days: int = 7) -> list:
+    """按天聚合 redfox 调用次数，返回最近 ``days`` 天的列表（含当天）。"""
+    return redis_client.get_redfox_daily_stats(days=days)
 

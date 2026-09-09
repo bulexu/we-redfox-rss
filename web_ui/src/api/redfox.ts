@@ -32,6 +32,18 @@ export interface RedfoxClearResponse {
   cleared_at: string
 }
 
+export interface RedfoxDailyStat {
+  date: string
+  total: number
+  success: number
+  failed: number
+}
+
+export interface RedfoxDailyResponse {
+  items: RedfoxDailyStat[]
+  days: number
+}
+
 /**
  * 获取 redfox 调用统计
  */
@@ -95,5 +107,22 @@ export const clearRedfoxLogs = async (): Promise<RedfoxClearResponse | null> => 
   } catch (error) {
     console.error('清空 redfox 日志失败:', error)
     return null
+  }
+}
+
+/**
+ * 获取 redfox 调用每日聚合（默认近 7 天）
+ */
+export const getRedfoxDailyStats = async (days = 7): Promise<RedfoxDailyResponse> => {
+  try {
+    const response = await http.get('wx/redfox/daily', { params: { days } })
+    const data = response || {}
+    return {
+      items: Array.isArray(data.items) ? data.items : [],
+      days: data.days || days,
+    }
+  } catch (error) {
+    console.error('获取 redfox 每日统计失败:', error)
+    return { items: [], days }
   }
 }

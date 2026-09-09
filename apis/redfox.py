@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from core.auth import get_current_user_or_ak
 from core.redis_client import (
     clear_redfox_logs,
+    get_redfox_daily_stats,
     get_redfox_logs,
     get_redfox_stats,
 )
@@ -72,3 +73,20 @@ async def redfox_logs_clear(current_user: dict = Depends(get_current_user_or_ak)
         return success_response({"cleared_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
     except Exception as exc:  # noqa: BLE001
         return error_response(code=500, message=f"清空日志失败: {exc}")
+
+
+@router.get(
+    "/daily",
+    summary="获取 redfox 调用每日聚合",
+    description="按天聚合 redfox 调用次数（成功 / 失败），覆盖最近 N 天（含当天）。",
+)
+async def redfox_daily_stats(
+    days: int = Query(7, ge=1, le=365, description="天数（1-365）"),
+    current_user: dict = Depends(get_current_user_or_ak),
+):
+    """获取 redfox 每日调用聚合，供前端柱状图使用。"""
+    try:
+        items = get_redfox_daily_stats(days=days)
+        return success_response({"items": items, "days": days})
+    except Exception as exc:  # noqa: BLE001
+        return error_response(code=500, message=f"获取每日统计失败: {exc}")

@@ -1,0 +1,1019 @@
+<template>
+  <div class="task-queue-view">
+    <!-- 顶部状态栏 -->
+    <div class="header-bar">
+      <div class="header-left">
+        <span class="title">任务队列</span>
+        <a-tag :color="wsConnected ? 'green' : 'orange'" size="small">
+          {{ wsConnected ? '实时' : '轮询' }}
+        </a-tag>
+      </div>
+      <div class="header-right">
+        <a-button type="primary" size="small" @click="refreshAll" :loading="loading">
+          <template #icon><icon-refresh /></template>
+          刷新
+        </a-button>
+      </div>
+    </div>
+
+    <a-spin :loading="loading" style="width: 100%">
+      <!-- 两列布局：主队列 + 内容队列 -->
+      <div class="queues-container">
+        <!-- 主队列（文章采集） -->
+        <div class="queue-section">
+          <div class="queue-header">
+            <span class="queue-title">文章采集队列</span>
+            <a-tag :color="mainQueueStatus.is_running ? 'green' : 'red'" size="small">
+              {{ mainQueueStatus.is_running ? '运行中' : '已停止' }}
+            </a-tag>
+            <div class="queue-actions">
+              <a-popconfirm content="确定要清空主队列吗？" @ok="handleClearQueue('main')">
+                <a-button size="mini" status="warning" :loading="clearingQueueMain">
+                  清空队列
+                </a-button>
+              </a-popconfirm>
+              <a-popconfirm content="确定要清空历史记录吗？" @ok="handleClearHistory('main')">
+                <a-button size="mini" status="danger" :loading="clearingHistoryMain">
+                  清空历史
+                </a-button>
+              </a-popconfirm>
+            </div>
+          </div>
+          
+          <div class="queue-content">
+            <!-- 状态概览 -->
+            <div class="status-row">
+              <div class="status-item">
+                <span class="label">待执行</span>
+                <span class="value pending">{{ mainQueueStatus.pending_count ?? 0 }}</span>
+              </div>
+              <div class="status-item">
+                <span class="label">历史数</span>
+                <span class="value">{{ mainQueueStatus.history_count ?? 0 }}</span>
+              </div>
+            </div>
+            
+            <!-- 当前任务 -->
+            <div class="current-task-section">
+              <div class="section-title">当前任务</div>
+              <div v-if="mainQueueStatus.current_task" class="current-task">
+                <div class="task-name">
+                  <icon-play-arrow-fill style="color: #165dff" />
+                  {{ mainQueueStatus.current_task.task_name }}
+                </div>
+                <div class="task-info">
+                  <span>{{ mainQueueStatus.current_task.start_time }}</span>
+                  <a-tag color="blue" size="small">{{ mainQueueStatus.current_task.status }}</a-tag>
+                </div>
+              </div>
+              <div v-else class="no-task">
+                <icon-pause-circle style="font-size: 18px; color: #c9cdd4" />
+                <span>暂无执行中任务</span>
+              </div>
+
+              <!-- 并行子任务:同一 batch 任务内部并发执行的 feed 列表 -->
+              <div v-if="mainQueueStatus.current_subtasks && mainQueueStatus.current_subtasks.length > 0" class="subtasks">
+                <div class="subtasks-title">
+                  <icon-mind-mapping style="color: #165dff; font-size: 12px" />
+                  并行子任务
+                  <span class="subtasks-stats">
+                    <span class="stat-running" v-if="mainSubtasksStats.running > 0">
+                      <icon-sync style="font-size: 10px" /> {{ mainSubtasksStats.running }}
+                    </span>
+                    <span class="stat-completed" v-if="mainSubtasksStats.completed > 0">
+                      <icon-check-circle-fill style="font-size: 10px" /> {{ mainSubtasksStats.completed }}
+                    </span>
+                    <span class="stat-failed" v-if="mainSubtasksStats.failed > 0">
+                      <icon-close-circle-fill style="font-size: 10px" /> {{ mainSubtasksStats.failed }}
+                    </span>
+                    <span class="stat-total">/ {{ mainSubtasksStats.total }}</span>
+                  </span>
+                </div>
+                <div class="task-list">
+                  <a-tag
+                    v-for="(sub, idx) in mainQueueStatus.current_subtasks"
+                    :key="idx"
+                    :color="getSubtaskColor(sub.status)"
+                    size="small"
+                    class="subtask-tag"
+                    :class="{ 'subtask-running': sub.status === 'running' }"
+                  >
+                    <component :is="getSubtaskIcon(sub.status)" style="font-size: 11px; margin-right: 2px" />
+                    {{ sub.task_name }}
+                  </a-tag>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 待执行任务 -->
+            <div class="pending-section">
+              <div class="section-title">待执行任务</div>
+              <div class="task-list" v-if="mainQueueStatus.pending_tasks && mainQueueStatus.pending_tasks.length > 0">
+                <a-tag v-for="(task, index) in mainQueueStatus.pending_tasks.slice(0, 8)" :key="index" color="arcoblue" size="small">
+                  {{ task.task_name }}
+                </a-tag>
+                <span v-if="mainQueueStatus.pending_tasks.length > 8" class="more">
+                  +{{ mainQueueStatus.pending_tasks.length - 8 }}
+                </span>
+              </div>
+              <div v-else class="no-task-small">暂无</div>
+            </div>
+            
+            <!-- 执行历史 -->
+            <div class="history-section">
+              <div class="section-title">执行历史</div>
+              <div class="history-list" v-if="mainHistory.length > 0">
+                <div v-for="(record, index) in mainHistory.slice(0, 5)" :key="index" class="history-item">
+                  <div class="history-row1">
+                    <span class="task-name">{{ record.task_name }}</span>
+                    <a-tag :color="getStatusColor(record.status)" size="small">{{ getStatusText(record.status) }}</a-tag>
+                  </div>
+                  <div class="history-row2">
+                    <span class="history-time">{{ record.start_time }}</span>
+                    <span class="history-duration" v-if="record.duration">{{ record.duration.toFixed(1) }}s</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="no-task-small">暂无历史</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 内容队列（补抓内容） -->
+        <div class="queue-section">
+          <div class="queue-header">
+            <span class="queue-title">内容补抓队列</span>
+            <a-tag :color="contentQueueStatus.is_running ? 'green' : 'red'" size="small">
+              {{ contentQueueStatus.is_running ? '运行中' : '已停止' }}
+            </a-tag>
+            <div class="queue-actions">
+              <a-popconfirm content="确定要清空内容队列吗？" @ok="handleClearQueue('content')">
+                <a-button size="mini" status="warning" :loading="clearingQueueContent">
+                  清空队列
+                </a-button>
+              </a-popconfirm>
+              <a-popconfirm content="确定要清空历史记录吗？" @ok="handleClearHistory('content')">
+                <a-button size="mini" status="danger" :loading="clearingHistoryContent">
+                  清空历史
+                </a-button>
+              </a-popconfirm>
+            </div>
+          </div>
+          
+          <div class="queue-content">
+            <!-- 状态概览 -->
+            <div class="status-row">
+              <div class="status-item">
+                <span class="label">待执行</span>
+                <span class="value pending">{{ contentQueueStatus.pending_count ?? 0 }}</span>
+              </div>
+              <div class="status-item">
+                <span class="label">历史数</span>
+                <span class="value">{{ contentQueueStatus.history_count ?? 0 }}</span>
+              </div>
+            </div>
+            
+            <!-- 当前任务 -->
+            <div class="current-task-section">
+              <div class="section-title">当前任务</div>
+              <div v-if="contentQueueStatus.current_task" class="current-task">
+                <div class="task-name">
+                  <icon-play-arrow-fill style="color: #165dff" />
+                  {{ contentQueueStatus.current_task.task_name }}
+                </div>
+                <div class="task-info">
+                  <span>{{ contentQueueStatus.current_task.start_time }}</span>
+                  <a-tag color="blue" size="small">{{ contentQueueStatus.current_task.status }}</a-tag>
+                </div>
+              </div>
+              <div v-else class="no-task">
+                <icon-pause-circle style="font-size: 18px; color: #c9cdd4" />
+                <span>暂无执行中任务</span>
+              </div>
+
+              <!-- 并行子任务:补抓队列当前没有并发执行,正常不会展示 -->
+              <div v-if="contentQueueStatus.current_subtasks && contentQueueStatus.current_subtasks.length > 0" class="subtasks">
+                <div class="subtasks-title">
+                  <icon-mind-mapping style="color: #165dff; font-size: 12px" />
+                  并行子任务
+                  <span class="subtasks-stats">
+                    <span class="stat-running" v-if="contentSubtasksStats.running > 0">
+                      <icon-sync style="font-size: 10px" /> {{ contentSubtasksStats.running }}
+                    </span>
+                    <span class="stat-completed" v-if="contentSubtasksStats.completed > 0">
+                      <icon-check-circle-fill style="font-size: 10px" /> {{ contentSubtasksStats.completed }}
+                    </span>
+                    <span class="stat-failed" v-if="contentSubtasksStats.failed > 0">
+                      <icon-close-circle-fill style="font-size: 10px" /> {{ contentSubtasksStats.failed }}
+                    </span>
+                    <span class="stat-total">/ {{ contentSubtasksStats.total }}</span>
+                  </span>
+                </div>
+                <div class="task-list">
+                  <a-tag
+                    v-for="(sub, idx) in contentQueueStatus.current_subtasks"
+                    :key="idx"
+                    :color="getSubtaskColor(sub.status)"
+                    size="small"
+                    class="subtask-tag"
+                    :class="{ 'subtask-running': sub.status === 'running' }"
+                  >
+                    <component :is="getSubtaskIcon(sub.status)" style="font-size: 11px; margin-right: 2px" />
+                    {{ sub.task_name }}
+                  </a-tag>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 待执行任务 -->
+            <div class="pending-section">
+              <div class="section-title">待执行任务</div>
+              <div class="task-list" v-if="contentQueueStatus.pending_tasks && contentQueueStatus.pending_tasks.length > 0">
+                <a-tag v-for="(task, index) in contentQueueStatus.pending_tasks.slice(0, 8)" :key="index" color="orangered" size="small">
+                  {{ task.task_name }}
+                </a-tag>
+                <span v-if="contentQueueStatus.pending_tasks.length > 8" class="more">
+                  +{{ contentQueueStatus.pending_tasks.length - 8 }}
+                </span>
+              </div>
+              <div v-else class="no-task-small">暂无</div>
+            </div>
+            
+            <!-- 执行历史 -->
+            <div class="history-section">
+              <div class="section-title">执行历史</div>
+              <div class="history-list" v-if="contentHistory.length > 0">
+                <div v-for="(record, index) in contentHistory.slice(0, 5)" :key="index" class="history-item">
+                  <div class="history-row1">
+                    <span class="task-name">{{ record.task_name }}</span>
+                    <a-tag :color="getStatusColor(record.status)" size="small">{{ getStatusText(record.status) }}</a-tag>
+                  </div>
+                  <div class="history-row2">
+                    <span class="history-time">{{ record.start_time }}</span>
+                    <span class="history-duration" v-if="record.duration">{{ record.duration.toFixed(1) }}s</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="no-task-small">暂无历史</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 定时调度器 -->
+      <div class="panel scheduler-panel">
+        <div class="panel-title">
+          定时调度器
+          <a-tag :color="schedulerStatus.running ? 'green' : 'red'" size="small">
+            {{ schedulerStatus.running ? '运行中' : '已停止' }}
+          </a-tag>
+        </div>
+        <div class="scheduler-content">
+          <div class="scheduler-list" v-if="schedulerJobs.length > 0">
+            <div v-for="job in schedulerJobs" :key="job.id" class="scheduler-item">
+              <span class="job-id">{{ job.id }}</span>
+              <span class="job-next">下次执行: {{ job.next_run_time || '-' }}</span>
+            </div>
+          </div>
+          <div v-else class="no-task">
+            <span>暂无定时任务</span>
+          </div>
+        </div>
+      </div>
+    </a-spin>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Message } from '@arco-design/web-vue'
+import {
+  IconRefresh,
+  IconPlayArrowFill,
+  IconPauseCircle,
+} from '@arco-design/web-vue/es/icon'
+import {
+  getQueueStatus,
+  clearQueue,
+  clearHistory,
+  getSchedulerStatus,
+  getSchedulerJobs,
+  getQueueHistory,
+  type QueueStatus,
+  type CurrentSubtask,
+  type SchedulerStatus,
+  type SchedulerJob,
+  type TaskRecord,
+} from '@/api/taskQueue'
+import { getToken } from '@/utils/auth'
+
+const loading = ref(false)
+const wsConnected = ref(false)
+
+// 清空状态
+const clearingQueueMain = ref(false)
+const clearingQueueContent = ref(false)
+const clearingHistoryMain = ref(false)
+const clearingHistoryContent = ref(false)
+
+// 主队列状态
+const mainQueueStatus = ref<QueueStatus>({
+  tag: '',
+  is_running: false,
+  pending_count: 0,
+  pending_tasks: [],
+  current_task: null,
+  history_count: 0,
+  recent_history: [],
+})
+
+// 内容队列状态
+const contentQueueStatus = ref<QueueStatus>({
+  tag: '',
+  is_running: false,
+  pending_count: 0,
+  pending_tasks: [],
+  current_task: null,
+  history_count: 0,
+  recent_history: [],
+})
+
+// 历史记录
+const mainHistory = ref<TaskRecord[]>([])
+const contentHistory = ref<TaskRecord[]>([])
+
+const schedulerStatus = ref<SchedulerStatus>({
+  running: false,
+  job_count: 0,
+  next_run_times: [],
+})
+
+const schedulerJobs = ref<SchedulerJob[]>([])
+
+// WebSocket 连接
+let ws: WebSocket | null = null
+let reconnectTimer: number | null = null
+let refreshTimer: number | null = null
+
+// 获取 WebSocket URL
+const getWsUrl = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host
+  const apiBase = '/api/v1/wx'
+  const token = getToken()
+  const tokenParam = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `${protocol}//${host}${apiBase}/task-queue/ws${tokenParam}`
+}
+
+// 连接 WebSocket
+const connectWebSocket = () => {
+  if (ws) {
+    ws.close()
+  }
+
+  try {
+    const wsUrl = getWsUrl()
+    console.log('[WebSocket] 连接中...', wsUrl)
+    ws = new WebSocket(wsUrl)
+
+    ws.onopen = () => {
+      console.log('[WebSocket] 连接成功')
+      wsConnected.value = true
+      if (reconnectTimer) {
+        clearInterval(reconnectTimer)
+        reconnectTimer = null
+      }
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        if (message.type === 'queue_status' && message.data) {
+          console.log('[WebSocket] 收到状态更新')
+          // 更新队列状态
+          if (message.data.main_queue) {
+            mainQueueStatus.value = message.data.main_queue
+            mainHistory.value = message.data.main_queue.recent_history || []
+          }
+          if (message.data.content_queue) {
+            contentQueueStatus.value = message.data.content_queue
+            contentHistory.value = message.data.content_queue.recent_history || []
+          }
+        }
+      } catch (e) {
+        console.error('解析 WebSocket 消息失败:', e)
+      }
+    }
+
+    ws.onclose = (event) => {
+      console.log('[WebSocket] 连接关闭', event.code, event.reason)
+      wsConnected.value = false
+      if (!reconnectTimer) {
+        reconnectTimer = window.setInterval(() => {
+          if (!wsConnected.value) {
+            connectWebSocket()
+          }
+        }, 5000)
+      }
+    }
+
+    ws.onerror = (error) => {
+      console.error('[WebSocket] 连接错误', error)
+      wsConnected.value = false
+    }
+  } catch (error) {
+    console.error('WebSocket 连接失败:', error)
+    wsConnected.value = false
+  }
+}
+
+// 获取状态颜色
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return 'green'
+    case 'running':
+      return 'blue'
+    case 'failed':
+      return 'red'
+    default:
+      return 'gray'
+  }
+}
+
+// 子任务状态颜色(running 蓝色脉冲,completed 绿色,failed 红色)
+const getSubtaskColor = (status: string) => {
+  switch (status) {
+    case 'running':
+      return 'blue'
+    case 'completed':
+      return 'green'
+    case 'failed':
+      return 'red'
+    default:
+      return 'gray'
+  }
+}
+
+// 子任务状态对应图标
+const getSubtaskIcon = (status: string) => {
+  switch (status) {
+    case 'running':
+      return 'icon-sync'
+    case 'completed':
+      return 'icon-check-circle-fill'
+    case 'failed':
+      return 'icon-close-circle-fill'
+    default:
+      return 'icon-question-circle'
+  }
+}
+
+// 汇总当前 subtasks 的状态计数
+const computeSubtaskStats = (subs?: CurrentSubtask[]) => {
+  const list = subs || []
+  const stats = { total: list.length, running: 0, completed: 0, failed: 0 }
+  for (const s of list) {
+    if (s.status === 'running') stats.running += 1
+    else if (s.status === 'completed') stats.completed += 1
+    else if (s.status === 'failed') stats.failed += 1
+  }
+  return stats
+}
+
+const mainSubtasksStats = computed(() => computeSubtaskStats(mainQueueStatus.value.current_subtasks))
+const contentSubtasksStats = computed(() => computeSubtaskStats(contentQueueStatus.value.current_subtasks))
+
+// 获取状态文本
+const getStatusText = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return '成功'
+    case 'running':
+      return '执行中'
+    case 'failed':
+      return '失败'
+    default:
+      return status
+  }
+}
+
+// 加载所有数据
+const refreshAll = async () => {
+  loading.value = true
+  try {
+    const [queueData, schedulerData, jobsData] = await Promise.all([
+      getQueueStatus(),
+      getSchedulerStatus(),
+      getSchedulerJobs(),
+    ])
+    
+    // 更新队列状态
+    if (queueData.main_queue) {
+      mainQueueStatus.value = queueData.main_queue
+      mainHistory.value = queueData.main_queue.recent_history || []
+    }
+    if (queueData.content_queue) {
+      contentQueueStatus.value = queueData.content_queue
+      contentHistory.value = queueData.content_queue.recent_history || []
+    }
+    
+    schedulerStatus.value = schedulerData
+    schedulerJobs.value = jobsData.jobs || []
+  } catch (error: any) {
+    console.error('Refresh error:', error)
+    Message.error(error.message || '加载数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 清空队列
+const handleClearQueue = async (queueType: 'main' | 'content') => {
+  if (queueType === 'main') {
+    clearingQueueMain.value = true
+  } else {
+    clearingQueueContent.value = true
+  }
+  try {
+    await clearQueue(queueType)
+    Message.success('队列已清空')
+    await refreshAll()
+  } catch (error: any) {
+    Message.error(error.message || '清空队列失败')
+  } finally {
+    if (queueType === 'main') {
+      clearingQueueMain.value = false
+    } else {
+      clearingQueueContent.value = false
+    }
+  }
+}
+
+// 清空历史
+const handleClearHistory = async (queueType: 'main' | 'content') => {
+  if (queueType === 'main') {
+    clearingHistoryMain.value = true
+  } else {
+    clearingHistoryContent.value = true
+  }
+  try {
+    await clearHistory(queueType)
+    Message.success('历史记录已清空')
+    await refreshAll()
+  } catch (error: any) {
+    Message.error(error.message || '清空历史失败')
+  } finally {
+    if (queueType === 'main') {
+      clearingHistoryMain.value = false
+    } else {
+      clearingHistoryContent.value = false
+    }
+  }
+}
+
+onMounted(() => {
+  refreshAll()
+  connectWebSocket()
+  refreshTimer = window.setInterval(() => {
+    if (!wsConnected.value) {
+      refreshAll()
+    }
+  }, 10000)
+})
+
+onUnmounted(() => {
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+  if (reconnectTimer) {
+    clearInterval(reconnectTimer)
+    reconnectTimer = null
+  }
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+})
+</script>
+
+<style scoped>
+.task-queue-view {
+  padding: 12px;
+  height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 顶部状态栏 */
+.header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--color-bg-2);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-left .title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.header-right {
+  display: flex;
+  gap: 8px;
+}
+
+/* 两列队列布局 */
+.queues-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.queue-section {
+  background: var(--color-bg-2);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.queue-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-fill-1);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.queue-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.queue-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.queue-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 状态行 */
+.status-row {
+  display: flex;
+  gap: 12px;
+}
+
+.status-item {
+  flex: 1;
+  text-align: center;
+  padding: 8px;
+  background: var(--color-fill-1);
+  border-radius: 4px;
+}
+
+.status-item .label {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-3);
+  margin-bottom: 2px;
+}
+
+.status-item .value {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.status-item .value.pending {
+  color: #ff7d00;
+}
+
+/* 当前任务 */
+.current-task-section {
+  background: var(--color-fill-1);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.section-title {
+  font-size: 11px;
+  color: var(--color-text-3);
+  margin-bottom: 6px;
+}
+
+.current-task {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.current-task .task-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.current-task .task-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--color-text-3);
+}
+
+.no-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.no-task-small {
+  color: var(--color-text-3);
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+/* 待执行任务 */
+.pending-section {
+  background: var(--color-fill-1);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.task-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.task-list .more {
+  font-size: 11px;
+  color: var(--color-text-3);
+  padding: 2px 6px;
+}
+
+/* 并行子任务区(batch 任务内部并发执行的 feed 列表) */
+.subtasks {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--color-fill-1, #f7f8fa);
+  border-radius: 4px;
+  border-left: 2px solid #165dff;
+}
+
+.subtasks-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text-2);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.subtasks-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: normal;
+}
+
+.subtasks-stats .stat-running,
+.subtasks-stats .stat-completed,
+.subtasks-stats .stat-failed,
+.subtasks-stats .stat-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.subtasks-stats .stat-running {
+  color: #165dff;
+  background: rgba(22, 93, 255, 0.08);
+}
+
+.subtasks-stats .stat-completed {
+  color: #00b42a;
+  background: rgba(0, 180, 42, 0.08);
+}
+
+.subtasks-stats .stat-failed {
+  color: #f53f3f;
+  background: rgba(245, 63, 63, 0.08);
+}
+
+.subtasks-stats .stat-total {
+  color: var(--color-text-3);
+}
+
+.subtask-tag {
+  transition: opacity 0.3s ease;
+}
+
+.subtask-running {
+  animation: subtask-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes subtask-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* 历史记录 */
+.history-section {
+  background: var(--color-fill-1);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-item {
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.history-row2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-text-3);
+}
+
+.history-item .task-name {
+  color: var(--color-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.history-time {
+  color: var(--color-text-3);
+}
+
+.history-duration {
+  color: var(--color-text-3);
+}
+
+/* 定时调度器 */
+.scheduler-panel {
+  background: var(--color-bg-2);
+  border-radius: 6px;
+  padding: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-2);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduler-content {
+  background: var(--color-fill-1);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.scheduler-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scheduler-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  background: var(--color-bg-2);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.scheduler-item .job-id {
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+.scheduler-item .job-next {
+  color: var(--color-text-3);
+  font-size: 11px;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .queues-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .task-queue-view {
+    padding: 8px;
+    height: auto;
+    min-height: calc(100vh - 100px);
+  }
+  
+  .header-bar {
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  
+  .header-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .queue-section {
+    margin-bottom: 0;
+  }
+  
+  .queue-header {
+    flex-wrap: wrap;
+    padding: 8px 10px;
+  }
+  
+  .queue-title {
+    font-size: 13px;
+  }
+  
+  .queue-actions {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 6px;
+    justify-content: flex-end;
+  }
+  
+  .queue-content {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .status-item .value {
+    font-size: 16px;
+  }
+  
+  .history-item .task-name {
+    max-width: 100px;
+  }
+  
+  .scheduler-item {
+    padding: 5px 8px;
+  }
+}
+</style>

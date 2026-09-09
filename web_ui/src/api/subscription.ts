@@ -116,12 +116,12 @@ export const searchBiz = (kw: string, params: { page?: number; pageSize?: number
   return http.get<SubscriptionListResult>(`/wx/mps/search/${kw}`,{ params: apiParams })
 }
 
-// 搜索公众号(不分页)
+// 搜索公众号（分页）
 export const searchMps = (kw: string, params: { offset?: number; limit?: number }) => {
   const apiParams = {
-    kw:kw||"",
-    offset: (params?.page || 0) * (params?.pageSize || 10),
-    limit: params?.pageSize || 10
+    kw: kw || '',
+    offset: params?.offset ?? 0,
+    limit: params?.limit ?? 20,
   }
-  return http.get<SubscriptionListResult>(`/wx/mps`,{ params: apiParams })
+  return http.get<SubscriptionListResult>('/wx/mps', { params: apiParams })
 }

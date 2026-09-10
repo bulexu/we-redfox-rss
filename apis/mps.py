@@ -493,7 +493,7 @@ async def add_mp(
          #在这里实现第一次添加获取公众号文章
         if not existing_feed:
             # 首次采集走统一入口,享受并发(单 feed 也走同一路径,语义一致)
-            from jobs.mps import _run_batch, max_workers as _batch_max_workers
+            from jobs.mps import _run_batch, max_workers as _batch_max_workers, TaskQueue
             TaskQueue.add_task(
                 _run_batch,
                 [feed],

@@ -494,12 +494,14 @@ async def add_mp(
         if not existing_feed:
             # 首次采集走统一入口,享受并发(单 feed 也走同一路径,语义一致)
             from jobs.mps import _run_batch, max_workers as _batch_max_workers, TaskQueue
+            # 注意:_run_batch 的形参名是 task,会与 TaskQueueManager.add_task
+            # 同名形参冲突,所以走 *args 位置参数,把 4 个参数整体打包传入。
             TaskQueue.add_task(
                 _run_batch,
                 [feed],
-                task=None,
-                isTest=False,
-                max_workers=_batch_max_workers,
+                None,
+                False,
+                _batch_max_workers,
                 task_name=f"首次采集:{mp_name}",
             )
             

@@ -22,6 +22,7 @@
               placeholder="请输入公众号名称"
               allow-clear
               allow-search
+              :filter-option="false"
               @search="handleSearch"
               @keydown.enter.prevent="handleSearchEnter"
             >

@@ -105,11 +105,30 @@ export const testBitable = (id: string) => {
   return http.post<TestBitableResp>(`/wx/lark/bitables/${id}/test`)
 }
 
-export const manualPush = (id: string, article_id: string) => {
-  return http.post<{ submitted: boolean; already_pushed: boolean; previous_record_id: string | null }>(
-    `/wx/lark/bitables/${id}/push`,
-    { article_id },
-  )
+export interface ManualPushItemResult {
+  article_id: string
+  ok: boolean
+  error?: string
+  already_pushed?: boolean
+  previous_record_id?: string | null
+}
+
+export interface ManualPushResp {
+  submitted: boolean
+  bitable_id?: string
+  total?: number
+  submitted_count?: number
+  results?: ManualPushItemResult[]
+  // 单条模式下的兼容字段
+  article_id?: string | null
+  already_pushed?: boolean
+  previous_record_id?: string | null
+}
+
+export const manualPush = (id: string, article_ids: string[]) => {
+  return http.post<ManualPushResp>(`/wx/lark/bitables/${id}/push`, {
+    article_ids,
+  })
 }
 
 export const listPushes = (params?: { article_id?: string; bitable_id?: string; limit?: number; offset?: number }) => {

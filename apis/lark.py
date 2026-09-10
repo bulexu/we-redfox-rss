@@ -50,7 +50,10 @@ class UpdateBitableRequest(BaseModel):
 
 
 class ManualPushRequest(BaseModel):
-    article_id: str = Field(..., min_length=1)
+    # 单条兼容字段:旧前端只传 article_id,保留向后兼容
+    article_id: Optional[str] = Field(None, min_length=1)
+    # 多选字段:新前端批量推送,优先于 article_id
+    article_ids: Optional[List[str]] = Field(None)
 
 
 # ===== Helper =====
@@ -281,7 +284,7 @@ async def test_bitable(
 
 # ===== 推送 =====
 
-@router.post("/bitables/{bitable_id}/push", summary="手动推送单篇文章到该 Bitable")
+@router.post("/bitables/{bitable_id}/push", summary="手动推送文章到该 Bitable(支持单条 / 批量)")
 async def manual_push(
     bitable_id: str,
     req: ManualPushRequest,
@@ -290,39 +293,108 @@ async def manual_push(
     """绕过自动 hook,  把 article_id 强制推到指定 Bitable;  仍走 worker pool
 
     (异步执行,  返回任务标记 + 已存在的 article_lark_pushes 用于幂等检查)。
+
+    支持两种入参:
+      * ``article_id``:单条(旧前端兼容)
+      * ``article_ids``:批量(新前端),优先于 ``article_id``
+    批量模式下返回每条 article 的提交结果。
     """
     from core.models.article import Article as ArticleModel
     from core.models.feed import Feed
     from core.lark_push import lark_maybe_push
+
+    # 解析请求:article_ids 优先;缺失则回退到 article_id;都没有则报错
+    targets: List[str] = []
+    if req.article_ids:
+        targets = [str(aid).strip() for aid in req.article_ids if str(aid).strip()]
+    elif req.article_id:
+        targets = [req.article_id.strip()]
+    if not targets:
+        return error_response(code=400, message="请传入 article_id 或 article_ids")
+
+    # 批量上限保护,防止前端误传巨大列表拖垮 worker pool
+    if len(targets) > 100:
+        return error_response(code=400, message=f"单次最多推送 100 条,当前 {len(targets)} 条")
+
+    # 去重保持顺序
+    seen = set()
+    deduped: List[str] = []
+    for aid in targets:
+        if aid and aid not in seen:
+            seen.add(aid)
+            deduped.append(aid)
+    targets = deduped
 
     session = DB.get_session()
     try:
         b = session.query(LarkBitable).filter(LarkBitable.id == bitable_id).first()
         if not b:
             return error_response(code=404, message="多维表配置不存在")
-        art = (
+
+        # 一次性查出所有目标文章 + 已推送记录,避免 N+1
+        articles = (
             session.query(ArticleModel)
-            .filter(ArticleModel.id == req.article_id)
-            .first()
+            .filter(ArticleModel.id.in_(targets))
+            .all()
         )
-        if not art:
-            return error_response(code=404, message="文章不存在")
-        already_pushed = (
+        found_map = {a.id: a for a in articles}
+        existing_pushes = (
             session.query(ArticleLarkPush)
             .filter(
-                ArticleLarkPush.article_id == art.id,
+                ArticleLarkPush.article_id.in_(targets),
                 ArticleLarkPush.bitable_id == b.id,
             )
-            .first()
+            .all()
         )
-        lark_maybe_push(art.id)
+        pushed_map = {p.article_id: p for p in existing_pushes}
+
+        results = []
+        for aid in targets:
+            art = found_map.get(aid)
+            if not art:
+                results.append({
+                    "article_id": aid,
+                    "ok": False,
+                    "error": "文章不存在",
+                })
+                continue
+            try:
+                lark_maybe_push(art.id)
+                existing = pushed_map.get(aid)
+                results.append({
+                    "article_id": art.id,
+                    "ok": True,
+                    "already_pushed": bool(existing),
+                    "previous_record_id": existing.record_id if existing else None,
+                })
+            except Exception as e:  # noqa: BLE001
+                # lark_maybe_push 自身已捕获异常吞掉,这里只是兜底
+                results.append({
+                    "article_id": art.id,
+                    "ok": False,
+                    "error": str(e),
+                })
+
+        submitted_count = sum(1 for r in results if r["ok"])
         return success_response({
-            "submitted": True,
-            "article_id": art.id,
+            "submitted": submitted_count > 0,
             "bitable_id": b.id,
-            "already_pushed": bool(already_pushed),
-            "previous_record_id": already_pushed.record_id if already_pushed else None,
-        }, "已提交到 worker (异步执行)")
+            "total": len(results),
+            "submitted_count": submitted_count,
+            "results": results,
+            # 兼容旧前端:单条模式下平铺顶层字段
+            "article_id": targets[0] if len(targets) == 1 else None,
+            "already_pushed": (
+                results[0].get("already_pushed", False)
+                if len(targets) == 1 and results and results[0].get("ok")
+                else False
+            ),
+            "previous_record_id": (
+                results[0].get("previous_record_id")
+                if len(targets) == 1 and results and results[0].get("ok")
+                else None
+            ),
+        }, f"已提交 {submitted_count}/{len(results)} 条到 worker (异步执行)")
     except Exception as e:
         return error_response(code=500, message=f"提交推送失败: {e}")
     finally:

@@ -31,6 +31,8 @@ import {
 } from '@arco-design/web-vue/es/icon'
 import MpMultiSelect from '@/components/MpMultiSelect.vue'
 import type { MpItem } from '@/types/subscription'
+import { getArticles } from '@/api/article'
+import type { Article } from '@/api/article'
 
 interface MappingRow {
   key: string
@@ -299,39 +301,178 @@ const onDelete = (b: LarkBitable) => {
 }
 
 const onManualPush = (b: LarkBitable) => {
-  let articleId = ''
-  Modal.confirm({
-    title: '手动推送文章',
-    content: () =>
-      h('div', [
-        h('p', { style: 'margin-top:0;' }, `推送到「${b.name}」`),
-        h(
-          'a-input',
-          {
-            placeholder: '输入 article_id',
-            'allow-clear': true,
-            onInput: (v: string) => {
-              articleId = v
-            },
-          },
-        ),
-      ]),
-    okText: '提交',
-    cancelText: '取消',
-    onOk: async () => {
-      if (!articleId.trim()) {
-        Message.warning('请输入 article_id')
-        return Promise.reject()
-      }
-      try {
-        const resp = await manualPush(b.id, articleId.trim())
-        const tag = resp?.already_pushed ? '(已存在 record_id)' : '(新推送)'
-        Message.success(`已提交到 worker ${tag}`)
-      } catch (err: any) {
-        Message.error('提交失败: ' + (err?.message || String(err)))
-      }
-    },
-  })
+  // 多选推送:打开专用模态,内含文章搜索 + 复选列表
+  pushModalBitable.value = b
+  pushModalSelected.value = []
+  pushModalSearch.value = ''
+  showPushModal.value = true
+  // 后端 mp_id 仅支持单值过滤,所以多 mp_id 走前端过滤。
+  // 0 个 mp_id 时不做过滤,允许推送任意公众号文章(和后端 worker 行为一致)。
+  pushModalMpIds.value = Array.isArray(b.mp_ids) ? [...b.mp_ids] : []
+  loadPushModalArticles(true)
+}
+
+// ---------- 多选推送模态 ----------
+const showPushModal = ref(false)
+const pushModalBitable = ref<LarkBitable | null>(null)
+const pushModalSelected = ref<string[]>([])
+const pushModalSearch = ref('')
+const pushModalMpIds = ref<string[]>([]) // 该 bitable 关联的 mp_ids,用于客户端过滤
+const pushModalArticles = ref<Article[]>([])
+const pushModalLoading = ref(false)
+const pushModalSubmitting = ref(false)
+const pushModalOffset = ref(0)
+const pushModalLimit = 20
+const pushModalTotal = ref(0)
+const pushModalHasMore = ref(false)
+
+const loadPushModalArticles = async (reset = false) => {
+  if (!pushModalBitable.value) return
+  pushModalLoading.value = true
+  try {
+    if (reset) {
+      pushModalOffset.value = 0
+      pushModalArticles.value = []
+    }
+    const resp: any = await getArticles({
+      // getArticles 内部会把 page * pageSize 作为 offset,所以这里传 page 即可
+      page: Math.floor(pushModalOffset.value / pushModalLimit),
+      pageSize: pushModalLimit,
+      search: pushModalSearch.value || undefined,
+      has_content: true, // 没正文的 article lark worker 会跳过,提前过滤掉
+    })
+    // 后端 mp_id 接口只支持单值,所以过滤放在前端:
+    // 仅保留 article.mp_id 在 bitable.mp_ids 集合内的条目。
+    const list: Article[] = (resp?.list || []) as Article[]
+    const mpSet = new Set(pushModalMpIds.value.map((s) => String(s)))
+    const filtered = mpSet.size
+      ? list.filter((a) => mpSet.has(String(a.mp_id || '')))
+      : list
+    if (reset) {
+      pushModalArticles.value = filtered
+    } else {
+      const existingIds = new Set(pushModalArticles.value.map((a) => String(a.id)))
+      pushModalArticles.value = [
+        ...pushModalArticles.value,
+        ...filtered.filter((a) => !existingIds.has(String(a.id))),
+      ]
+    }
+    pushModalTotal.value = Number(resp?.total || 0)
+    // 继续翻页条件:
+    //   1) 后端还有更多(list 长度 == pageSize 表示还有,小于则说明到底了)
+    //   2) 我们累计拉的页数没到上限(200,避免极端情况下无限拉)
+    // 这里不能用 pushModalArticles.length < pushModalTotal,因为 total 是未过滤前的
+    // 总数,前端过滤后永远小于它,会陷入"加载更多但始终拿不到目标 mp 文章"的循环。
+    pushModalHasMore.value =
+      list.length >= pushModalLimit && pushModalOffset.value + pushModalLimit < 200
+    pushModalOffset.value += pushModalLimit
+  } catch (err: any) {
+    Message.error('加载文章失败: ' + (err?.message || String(err)))
+  } finally {
+    pushModalLoading.value = false
+  }
+}
+
+const onPushModalSearch = () => {
+  loadPushModalArticles(true)
+}
+
+const onPushModalLoadMore = () => {
+  if (pushModalLoading.value || !pushModalHasMore.value) return
+  loadPushModalArticles(false)
+}
+
+const togglePushModalItem = (articleId: string) => {
+  const idx = pushModalSelected.value.indexOf(articleId)
+  if (idx >= 0) {
+    pushModalSelected.value.splice(idx, 1)
+  } else {
+    pushModalSelected.value.push(articleId)
+  }
+}
+
+const isPushModalSelected = (articleId: string) =>
+  pushModalSelected.value.includes(articleId)
+
+const selectAllPushModalVisible = () => {
+  const visibleIds = pushModalArticles.value.map((a) => String(a.id))
+  const allSelected = visibleIds.every((id) => pushModalSelected.value.includes(id))
+  if (allSelected) {
+    // 取消当前可见项
+    pushModalSelected.value = pushModalSelected.value.filter(
+      (id) => !visibleIds.includes(id),
+    )
+  } else {
+    // 合并:保留已选 + 新增可见未选
+    const set = new Set(pushModalSelected.value)
+    visibleIds.forEach((id) => set.add(id))
+    pushModalSelected.value = Array.from(set)
+  }
+}
+
+const allVisibleSelected = computed(() => {
+  if (!pushModalArticles.value.length) return false
+  return pushModalArticles.value.every((a) =>
+    pushModalSelected.value.includes(String(a.id)),
+  )
+})
+
+const clearPushModalSelection = () => {
+  pushModalSelected.value = []
+}
+
+const closePushModal = () => {
+  showPushModal.value = false
+  pushModalBitable.value = null
+  pushModalSelected.value = []
+  pushModalArticles.value = []
+  pushModalSearch.value = ''
+}
+
+const submitPushModal = async (): Promise<boolean | undefined> => {
+  if (!pushModalBitable.value) return true
+  if (!pushModalSelected.value.length) {
+    Message.warning('请至少选择一篇文章')
+    return false // 阻止关闭
+  }
+  pushModalSubmitting.value = true
+  try {
+    const resp: any = await manualPush(
+      pushModalBitable.value.id,
+      pushModalSelected.value,
+    )
+    const submittedCount = Number(resp?.submitted_count ?? 0)
+    const totalCount = Number(resp?.total ?? pushModalSelected.value.length)
+    if (submittedCount === totalCount && totalCount > 0) {
+      Message.success(`已提交 ${submittedCount}/${totalCount} 条到 worker`)
+    } else if (submittedCount > 0) {
+      Message.warning(`部分提交成功: ${submittedCount}/${totalCount}`)
+    } else {
+      Message.error('提交失败:请查看详情')
+    }
+    // 推送完成后立即刷新历史列表
+    await loadPushes()
+    // 返回 undefined → Arco 自动关闭模态
+    return
+  } catch (err: any) {
+    Message.error('提交失败: ' + (err?.message || String(err)))
+    return false // 失败时阻止关闭,允许用户重试
+  } finally {
+    pushModalSubmitting.value = false
+  }
+}
+
+const formatArticleTime = (ts: any): string => {
+  if (!ts) return ''
+  // 文章接口可能返回秒或毫秒或 ISO 字符串,统一尝试
+  let d: Date
+  if (typeof ts === 'number') {
+    d = new Date(ts < 1e12 ? ts * 1000 : ts)
+  } else {
+    d = new Date(ts)
+  }
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleString()
 }
 
 // arco Modal.confirm 中用 h() 需要显式 import (setup 内置 h)
@@ -589,6 +730,91 @@ const statusEnabled = computed(() => larkStatus.value?.enabled ?? false)
       </div>
     </a-modal>
 
+    <!-- 手动推送文章(多选) -->
+    <a-modal
+      v-model:visible="showPushModal"
+      title="手动推送文章"
+      :ok-text="pushModalSubmitting ? '提交中...' : `提交 (${pushModalSelected.length})`"
+      :ok-button-props="{ disabled: !pushModalSelected.length || pushModalSubmitting, loading: pushModalSubmitting }"
+      :cancel-text="'取消'"
+      :mask-closable="!pushModalSubmitting"
+      width="780px"
+      :on-before-ok="submitPushModal"
+      @cancel="closePushModal"
+    >
+      <div class="push-modal">
+        <a-alert type="info" :show-icon="true" style="margin-bottom: 12px">
+          推送到「{{ pushModalBitable?.name }}」
+          <span v-if="pushModalMpIds.length">
+            ,已按 {{ pushModalMpIds.length }} 个关联公众号过滤候选文章
+          </span>
+          <span v-else>
+            ,未关联任何公众号,可手动选择任意文章推送(worker 会按 article.mp_id 自动匹配)
+          </span>
+        </a-alert>
+
+        <div class="push-modal-toolbar">
+          <a-input-search
+            v-model="pushModalSearch"
+            placeholder="搜索文章标题或 ID"
+            allow-clear
+            @search="onPushModalSearch"
+            @clear="onPushModalSearch"
+            style="flex: 1"
+          />
+          <a-button @click="selectAllPushModalVisible" :disabled="!pushModalArticles.length">
+            {{ allVisibleSelected ? '取消全选' : '全选当前页' }}
+          </a-button>
+          <a-button @click="clearPushModalSelection" :disabled="!pushModalSelected.length">
+            清空 ({{ pushModalSelected.length }})
+          </a-button>
+        </div>
+
+        <div class="push-modal-summary">
+          <span>
+            已选 {{ pushModalSelected.length }} /
+            可见 {{ pushModalArticles.length }}
+            <template v-if="pushModalMpIds.length">
+              / 匹配 {{ pushModalArticles.length }} 条(后端共 {{ pushModalTotal }} 条)
+            </template>
+            <template v-else>
+              / 总计 {{ pushModalTotal }}
+            </template>
+          </span>
+        </div>
+
+        <a-spin :loading="pushModalLoading" style="width: 100%">
+          <div class="push-modal-list">
+            <a-checkbox
+              v-for="a in pushModalArticles"
+              :key="String(a.id)"
+              :model-value="isPushModalSelected(String(a.id))"
+              @change="togglePushModalItem(String(a.id))"
+              class="push-modal-item"
+            >
+              <div class="push-modal-item-title">{{ a.title || '(无标题)' }}</div>
+              <div class="push-modal-item-meta">
+                <span>{{ (a as any).mp_name || '未知公众号' }}</span>
+                <span class="push-modal-item-id">id: {{ a.id }}</span>
+                <span v-if="a.publish_time">{{ formatArticleTime(a.publish_time) }}</span>
+              </div>
+            </a-checkbox>
+            <a-empty v-if="!pushModalLoading && !pushModalArticles.length" description="暂无匹配文章" />
+          </div>
+        </a-spin>
+
+        <div v-if="pushModalHasMore" class="push-modal-loadmore">
+          <a-button
+            type="text"
+            :loading="pushModalLoading"
+            @click="onPushModalLoadMore"
+          >
+            加载更多
+          </a-button>
+        </div>
+      </div>
+    </a-modal>
+
     <!-- 公众号选择器 -->
     <a-modal
       v-model:visible="showMpSelector"
@@ -610,4 +836,54 @@ const statusEnabled = computed(() => larkStatus.value?.enabled ?? false)
 <style scoped>
 .lark-page { padding: 16px; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+.push-modal-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.push-modal-summary {
+  font-size: 12px;
+  color: var(--color-text-3);
+  margin-bottom: 8px;
+}
+.push-modal-list {
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-2);
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.push-modal-item {
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+.push-modal-item:hover {
+  background-color: var(--color-fill-2);
+}
+.push-modal-item-title {
+  font-size: 14px;
+  color: var(--color-text-1);
+  word-break: break-all;
+}
+.push-modal-item-meta {
+  font-size: 12px;
+  color: var(--color-text-3);
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.push-modal-item-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.push-modal-loadmore {
+  text-align: center;
+  margin-top: 8px;
+}
 </style>

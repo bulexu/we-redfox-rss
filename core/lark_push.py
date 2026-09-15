@@ -84,7 +84,8 @@ def _get_executor() -> ThreadPoolExecutor:
 def _resolve_field_value(article: Article, feed: Feed | None, key: str):
     """把字段映射白名单 key 转成实际可发给飞书的值。
 
-    对 ``publish_time`` 自动转 ISO8601 字符串 (避免飞书接到 epoch 数字一脸懵)。
+    对 ``publish_time`` 转成 ``YYYY-MM-DD HH:MM:SS`` 本地时间字符串
+    (服务器部署在 Asia/Shanghai, 与公众号页面显示一致)。
     其他 key 直接 ``getattr`` Article / Feed。
     """
     if key == "publish_time":
@@ -96,7 +97,10 @@ def _resolve_field_value(article: Article, feed: Feed | None, key: str):
             ts = int(ts)
             if ts > 10_000_000_000:
                 ts = ts // 1000
-            return datetime.utcfromtimestamp(ts).isoformat() + "Z"
+            # epoch 在抓取阶段已按服务器本地时区(Asia/Shanghai)换算过,
+            # 这里直接用本地时区输出 ``YYYY-MM-DD HH:MM:SS`` 文本,
+            # 与公众号页面显示一致, 避免飞书按 UTC 解读造成 8 小时偏差。
+            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
         except (TypeError, ValueError, OverflowError):
             return None
 

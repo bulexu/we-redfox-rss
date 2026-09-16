@@ -6,7 +6,6 @@ import {
   updateBitable,
   deleteBitable,
   testBitable,
-  listPushes,
   manualPush,
   getLarkStatus,
 } from '@/api/lark'
@@ -15,7 +14,6 @@ import type {
   CreateBitableRequest,
   UpdateBitableRequest,
   TestBitableResp,
-  LarkPushRecord,
   LarkStatus,
 } from '@/api/lark'
 import { Modal, Message } from '@arco-design/web-vue'
@@ -40,11 +38,9 @@ interface MappingRow {
 }
 
 const bitables = ref<LarkBitable[]>([])
-const pushes = ref<LarkPushRecord[]>([])
 const allowedKeys = ref<string[]>([])
 const total = ref(0)
 const loading = ref(false)
-const pushesLoading = ref(false)
 const larkStatus = ref<LarkStatus | null>(null)
 
 const showForm = ref(false)
@@ -97,22 +93,9 @@ const loadStatus = async () => {
   }
 }
 
-const loadPushes = async () => {
-  pushesLoading.value = true
-  try {
-    const resp = await listPushes({ limit: 20 })
-    pushes.value = resp.list || []
-  } catch (err: any) {
-    console.error('加载推送历史失败', err)
-  } finally {
-    pushesLoading.value = false
-  }
-}
-
 onMounted(() => {
   loadStatus()
   loadBitables()
-  loadPushes()
 })
 
 const columns = [
@@ -123,13 +106,6 @@ const columns = [
   { title: '关联公众号', slotName: 'mp_ids', width: 80 },
   { title: '最近推送', slotName: 'last_pushed', width: 200 },
   { title: '操作', slotName: 'action', width: 200, fixed: 'right' },
-]
-
-const pushColumns = [
-  { title: '推送时间', slotName: 'pushed_at', width: 180 },
-  { title: '文章 ID', dataIndex: 'article_id', ellipsis: true, tooltip: true },
-  { title: 'Bitable ID', dataIndex: 'bitable_id', ellipsis: true, tooltip: true },
-  { title: '飞书记录 ID', dataIndex: 'record_id', ellipsis: true, tooltip: true },
 ]
 
 const formatTime = (ts: number | null | undefined): string => {
@@ -284,7 +260,7 @@ const onTest = async (b: LarkBitable) => {
 const onDelete = (b: LarkBitable) => {
   Modal.confirm({
     title: '确认删除',
-    content: `删除多维表配置「${b.name}」?推送历史会保留。`,
+    content: `删除多维表配置「${b.name}」?已推送的多维表记录会保留。`,
     okText: '删除',
     cancelText: '取消',
     okButtonProps: { status: 'danger' },
@@ -450,8 +426,6 @@ const submitPushModal = async (): Promise<boolean | undefined> => {
     } else {
       Message.error('提交失败:请查看详情')
     }
-    // 推送完成后立即刷新历史列表
-    await loadPushes()
     // 返回 undefined → Arco 自动关闭模态
     return
   } catch (err: any) {
@@ -594,21 +568,6 @@ const statusEnabled = computed(() => larkStatus.value?.enabled ?? false)
       <div style="margin-top: 12px; color: var(--color-text-3); font-size: 12px">
         共 {{ total }} 条
       </div>
-    </a-card>
-
-    <a-card title="最近推送 (20 条)" :bordered="false" style="margin-top: 16px">
-      <a-table
-        :columns="pushColumns"
-        :data="pushes"
-        :loading="pushesLoading"
-        :pagination="false"
-        row-key="article_id"
-        size="small"
-      >
-        <template #pushed_at="{ record }">
-          {{ formatTime(record.pushed_at) }}
-        </template>
-      </a-table>
     </a-card>
 
     <!-- 表单模态 -->

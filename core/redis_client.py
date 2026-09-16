@@ -130,7 +130,7 @@ class RedisClient:
             log_key = f"werss:env_exception:logs"
             log_data = {
                 "url": url,
-                "mp_name": mp_name,
+                "name": mp_name,
                 "mp_id": mp_id,
                 "timestamp": timestamp
             }

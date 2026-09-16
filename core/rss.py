@@ -204,7 +204,7 @@ class RSS:
             ET.SubElement(entry, "link", href=str(rss_item["link"]))
             ET.SubElement(entry, "updated").text =self.datetime_to_rfc822(str(rss_item["updated"]))
             ET.SubElement(entry, "summary").text = str(rss_item["description"])
-            ET.SubElement(entry, "author").text = str(rss_item["mp_name"])
+            ET.SubElement(entry, "author").text = str(rss_item["name"])
              # 添加图片封面
             if cfg.get("rss.add_cover",False)==True:
                 enclosure = ET.SubElement(entry, "enclosure")
@@ -270,7 +270,7 @@ class RSS:
                     "link": item["link"],
                     "updated": item["updated"].isoformat() if isinstance(item["updated"], datetime) else item["updated"],
                     "content": format_content(item["content"],type),
-                    "channel_name": item.get("mp_name", ""),
+                    "channel_name": item.get("name", ""),
                     "feed": item.get("feed")
                 } for item in rss_list
             ]

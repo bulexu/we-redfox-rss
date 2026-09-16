@@ -7,129 +7,134 @@
           <img :src="logo" alt="avatar" :width="60" style="margin-right:1rem;">
           <router-link to="/">{{ appTitle }}</router-link>
         </div>
-        <a-space>
-            <a-select :defaultValue="currentLanguage" v-model:value="currentLanguage" @change="handleLanguageChange" >
-              <a-option value="">禁用</a-option>
-              <a-option value="chinese_simplified">简体中文</a-option>
-              <a-option value="chinese_traditional">繁體中文</a-option>
-              <a-option value="english" selected="selected">English</a-option>
-              <a-option value="russian">Русский язык</a-option>
-              <a-option value="corsican">hinaassicurasol</a-option>
-              <a-option value="guarani">ondoho</a-option>
-              <a-option value="kinyarwanda">Kinyarwanda</a-option>
-              <a-option value="hausa">dictionary variant</a-option>
-              <a-option value="norwegian">Norge</a-option>
-              <a-option value="dutch">nederlands</a-option>
-              <a-option value="yoruba">Yoruba</a-option>
-              <a-option value="gongen">गोंगेन हें नांव</a-option>
-              <a-option value="latin">Latina</a-option>
-              <a-option value="nepali">नेपालीName</a-option>
-              <a-option value="french">Français</a-option>
-              <a-option value="czech">český</a-option>
-              <a-option value="hawaiian">panekeʻhaka</a-option>
-              <a-option value="georgian">ჯორჯიანიName</a-option>
-             
-              <a-option value="serbian">Српски</a-option>
-              <a-option value="persian">Persian</a-option>
-              <a-option value="bhojpuri">हमार कपार दर्द करता।</a-option>
-              <a-option value="hindi">हिन्दी</a-option>
-              <a-option value="belarusian">БеларускаяName</a-option>
-              <a-option value="kazakh">қазақ</a-option>
-              <a-option value="swahili">Kiswahili</a-option>
-              <a-option value="icelandic">ÍslandName</a-option>
-              <a-option value="yiddish">ייַדיש</a-option>
-              <a-option value="twi">Ma frɛ</a-option>
-              <a-option value="irish">Íris</a-option>
-              <a-option value="gujarati">ગુજરાતી</a-option>
-              <a-option value="khmer">ភាសា&ZeroWidthSpace;ខ្មែរName</a-option>
-              <a-option value="slovak">Slovenská</a-option>
-              <a-option value="hebrew">היברית</a-option>
-              <a-option value="kannada">ಕನ್ನಡ್Name</a-option>
-              <a-option value="hungarian">magyar</a-option>
-              <a-option value="tamil">தாமில்</a-option>
-              <a-option value="arabic">بالعربية</a-option>
-              <a-option value="bengali">বেঙ্গালী</a-option>
-              <a-option value="azerbaijani">azerbaijani</a-option>
-              <a-option value="samoan">lifiava</a-option>
-              <a-option value="afrikaans">afrikaans</a-option>
-              <a-option value="indonesian">IndonesiaName</a-option>
-              <a-option value="danish">dansk</a-option>
-              <a-option value="shona">Shona</a-option>
-              <a-option value="bambara">Bamanankan</a-option>
-              <a-option value="lithuanian">Lietuva</a-option>
-              <a-option value="vietnamese">Tiếng Việt</a-option>
-              <a-option value="maltese">Malti</a-option>
-              <a-option value="turkmen">Türkmençe</a-option>
-              <a-option value="assamese">assamese</a-option>
-              <a-option value="catalan">català</a-option>
-              <a-option value="singapore">සිංගාපුර්</a-option>
-              <a-option value="cebuano">cebuano</a-option>
-              <a-option value="sanskrit">Sanskrit</a-option>
-              <a-option value="polish">Polski</a-option>
-              <a-option value="galician">galico</a-option>
-              <a-option value="latvian">latviešu</a-option>
-              <a-option value="ukrainian">Україна</a-option>
-              <a-option value="tatar">Татар</a-option>
-              <a-option value="scottish_gaelic">Gàidhlig na h-Alba</a-option>
-              <a-option value="welsh">Iaith Weleg</a-option>
-              <a-option value="japanese">日本語</a-option>
-              <a-option value="filipino">Pilipino</a-option>
-              <a-option value="aymara">aymara.</a-option>
-              <a-option value="lao">ກະຣຸນາ</a-option>
-              <a-option value="telugu">తెలుగుName</a-option>
-              <a-option value="romanian">Română</a-option>
-              <a-option value="haitian_creole">Kreyòl ayisyen</a-option>
-              <a-option value="dogrid">कुकुरमुत्ता</a-option>
-              <a-option value="swedish">Svenska</a-option>
-              <a-option value="maithili">मरातिलीName</a-option>
-              <a-option value="thai">คนไทย</a-option>
-              <a-option value="armenian">Արմենյան</a-option>
-              <a-option value="burmese">ဗာရမ်</a-option>
-              <a-option value="pashto">پښتوName</a-option>
-              <a-option value="hmong">hmong</a-option>
-              <a-option value="dhivehi">ދިވާރީވް</a-option>
-              <a-option value="luxembourgish">LëtzebuergeschName</a-option>
-              <a-option value="sindhi">سنڌي</a-option>
-              <a-option value="kurdish">Kurdî</a-option>
-              <a-option value="turkish">Türkçe</a-option>
-              <a-option value="macedonian">Македонски</a-option>
-              <a-option value="bulgarian">български</a-option>
-              <a-option value="malay">Malay</a-option>
-              <a-option value="luganda">luganda</a-option>
-              <a-option value="marathi">मराठीName</a-option>
-              <a-option value="estonian">eesti keel</a-option>
-              <a-option value="malayalam">മലമാലം</a-option>
-              <a-option value="deutsch">Deutsch</a-option>
-              <a-option value="slovene">slovenščina</a-option>
-              <a-option value="urdu">اوردو</a-option>
-              <a-option value="portuguese">português</a-option>
-              <a-option value="igbo">igbo</a-option>
-              <a-option value="kurdish_sorani">کوردی سۆرانی</a-option>
-              <a-option value="oromo">adeta</a-option>
-              <a-option value="greek">ελληνικά</a-option>
-              <a-option value="spanish">Español</a-option>
-              <a-option value="frisian">frysk</a-option>
-              <a-option value="somali">Soomaali</a-option>
-              <a-option value="amharic">amharic</a-option>
-              <a-option value="nyanja">potakuyan</a-option>
-              <a-option value="punjabi">ਪੰਜਾਬੀName</a-option>
-              <a-option value="basque">baskoa</a-option>
-              <a-option value="italian">italiano</a-option>
-              <a-option value="albanian">albanian</a-option>
-              <a-option value="korean">한국어</a-option>
-              <a-option value="tajik">ТаjikӣName</a-option>
-              <a-option value="finnish">suomi</a-option>
-              <a-option value="kyrgyz">Кыргыз тили</a-option>
-              <a-option value="ewe">Eʋegbe</a-option>
-              <a-option value="croatian">hrvatski</a-option>
-              <a-option value="creole">a n:n</a-option>
-              <a-option value="quechua">Quechua</a-option>
-              <a-option value="bosnian">bosnian</a-option>
-              <a-option value="maori">Maori</a-option>
-            </a-select>
-        </a-space>
+      </div>
+      <!-- 一级入口: 平台选择 / 系统管理,  与 logo 同行展示 -->
+      <div class="header-center">
+        <Navbar />
       </div>
       <div class="header-right" v-if="hasLogined">
+        <a-space>
+          <a-select :defaultValue="currentLanguage" v-model:value="currentLanguage" @change="handleLanguageChange">
+            <a-option value="">禁用</a-option>
+            <a-option value="chinese_simplified">简体中文</a-option>
+            <a-option value="chinese_traditional">繁體中文</a-option>
+            <a-option value="english" selected="selected">English</a-option>
+            <a-option value="russian">Русский язык</a-option>
+            <a-option value="corsican">hinaassicurasol</a-option>
+            <a-option value="guarani">ondoho</a-option>
+            <a-option value="kinyarwanda">Kinyarwanda</a-option>
+            <a-option value="hausa">dictionary variant</a-option>
+            <a-option value="norwegian">Norge</a-option>
+            <a-option value="dutch">nederlands</a-option>
+            <a-option value="yoruba">Yoruba</a-option>
+            <a-option value="gongen">गोंगेन हें नांव</a-option>
+            <a-option value="latin">Latina</a-option>
+            <a-option value="nepali">नेपालीName</a-option>
+            <a-option value="french">Français</a-option>
+            <a-option value="czech">český</a-option>
+            <a-option value="hawaiian">panekeʻhaka</a-option>
+            <a-option value="georgian">ჯორჯიანიName</a-option>
+
+            <a-option value="serbian">Српски</a-option>
+            <a-option value="persian">Persian</a-option>
+            <a-option value="bhojpuri">हमार कपार दर्द करता।</a-option>
+            <a-option value="hindi">हिन्दी</a-option>
+            <a-option value="belarusian">БеларускаяName</a-option>
+            <a-option value="kazakh">қазақ</a-option>
+            <a-option value="swahili">Kiswahili</a-option>
+            <a-option value="icelandic">ÍslandName</a-option>
+            <a-option value="yiddish">ייַדיש</a-option>
+            <a-option value="twi">Ma frɛ</a-option>
+            <a-option value="irish">Íris</a-option>
+            <a-option value="gujarati">ગુજરાતી</a-option>
+            <a-option value="khmer">ភាសា&ZeroWidthSpace;ខ្មែរName</a-option>
+            <a-option value="slovak">Slovenská</a-option>
+            <a-option value="hebrew">היברית</a-option>
+            <a-option value="kannada">ಕನ್ನಡ್Name</a-option>
+            <a-option value="hungarian">magyar</a-option>
+            <a-option value="tamil">தாமில்</a-option>
+            <a-option value="arabic">بالعربية</a-option>
+            <a-option value="bengali">বেঙ্গালী</a-option>
+            <a-option value="azerbaijani">azerbaijani</a-option>
+            <a-option value="samoan">lifiava</a-option>
+            <a-option value="afrikaans">afrikaans</a-option>
+            <a-option value="indonesian">IndonesiaName</a-option>
+            <a-option value="danish">dansk</a-option>
+            <a-option value="shona">Shona</a-option>
+            <a-option value="bambara">Bamanankan</a-option>
+            <a-option value="lithuanian">Lietuva</a-option>
+            <a-option value="vietnamese">Tiếng Việt</a-option>
+            <a-option value="maltese">Malti</a-option>
+            <a-option value="turkmen">Türkmençe</a-option>
+            <a-option value="assamese">assamese</a-option>
+            <a-option value="catalan">català</a-option>
+            <a-option value="singapore">සිංගාපුර්</a-option>
+            <a-option value="cebuano">cebuano</a-option>
+            <a-option value="sanskrit">Sanskrit</a-option>
+            <a-option value="polish">Polski</a-option>
+            <a-option value="galician">galico</a-option>
+            <a-option value="latvian">latviešu</a-option>
+            <a-option value="ukrainian">Україна</a-option>
+            <a-option value="tatar">Татар</a-option>
+            <a-option value="scottish_gaelic">Gàidhlig na h-Alba</a-option>
+            <a-option value="welsh">Iaith Weleg</a-option>
+            <a-option value="japanese">日本語</a-option>
+            <a-option value="filipino">Pilipino</a-option>
+            <a-option value="aymara">aymara.</a-option>
+            <a-option value="lao">ກະຣຸນາ</a-option>
+            <a-option value="telugu">తెలుగుName</a-option>
+            <a-option value="romanian">Română</a-option>
+            <a-option value="haitian_creole">Kreyòl ayisyen</a-option>
+            <a-option value="dogrid">कुकुरमुत्ता</a-option>
+            <a-option value="swedish">Svenska</a-option>
+            <a-option value="maithili">मरातिलीName</a-option>
+            <a-option value="thai">คนไทย</a-option>
+            <a-option value="armenian">Արմենյան</a-option>
+            <a-option value="burmese">ဗာရမ်</a-option>
+            <a-option value="pashto">پښتوName</a-option>
+            <a-option value="hmong">hmong</a-option>
+            <a-option value="dhivehi">ދިވާރީވް</a-option>
+            <a-option value="luxembourgish">LëtzebuergeschName</a-option>
+            <a-option value="sindhi">سنڌي</a-option>
+            <a-option value="kurdish">Kurdî</a-option>
+            <a-option value="turkish">Türkçe</a-option>
+            <a-option value="macedonian">Македонски</a-option>
+            <a-option value="bulgarian">български</a-option>
+            <a-option value="malay">Malay</a-option>
+            <a-option value="luganda">luganda</a-option>
+            <a-option value="marathi">मराठीName</a-option>
+            <a-option value="estonian">eesti keel</a-option>
+            <a-option value="malayalam">മലമാലം</a-option>
+            <a-option value="deutsch">Deutsch</a-option>
+            <a-option value="slovene">slovenščina</a-option>
+            <a-option value="urdu">اوردو</a-option>
+            <a-option value="portuguese">português</a-option>
+            <a-option value="igbo">igbo</a-option>
+            <a-option value="kurdish_sorani">کوردی سۆرانی</a-option>
+            <a-option value="oromo">adeta</a-option>
+            <a-option value="greek">ελληνικά</a-option>
+            <a-option value="spanish">Español</a-option>
+            <a-option value="frisian">frysk</a-option>
+            <a-option value="somali">Soomaali</a-option>
+            <a-option value="amharic">amharic</a-option>
+            <a-option value="nyanja">potakuyan</a-option>
+            <a-option value="punjabi">ਪੰਜਾਬੀName</a-option>
+            <a-option value="basque">baskoa</a-option>
+            <a-option value="italian">italiano</a-option>
+            <a-option value="albanian">albanian</a-option>
+            <a-option value="korean">한국어</a-option>
+            <a-option value="tajik">ТаjikӣName</a-option>
+            <a-option value="finnish">suomi</a-option>
+            <a-option value="kyrgyz">Кыргыз тили</a-option>
+            <a-option value="ewe">Eʋegbe</a-option>
+            <a-option value="croatian">hrvatski</a-option>
+            <a-option value="creole">a n:n</a-option>
+            <a-option value="quechua">Quechua</a-option>
+            <a-option value="bosnian">bosnian</a-option>
+            <a-option value="maori">Maori</a-option>
+          </a-select>
+        </a-space>
+
         <a-link href="/views/home" target="_blank" style="margin-right: 20px;">Views</a-link>
         <a-link href="/api/docs" target="_blank" style="margin-right: 20px;">Docs</a-link>
 
@@ -175,6 +180,7 @@
 import translate from 'i18n-jsautotranslate'
 import { ref, computed, onMounted, watch } from 'vue'
 import { getSysInfo } from '@/api/sysInfo'
+import Navbar from '@/components/Layout/Navbar.vue'
 const currentLanguage = ref(localStorage.getItem('language') || 'chinese_simplified');
 
 
@@ -288,6 +294,17 @@ watch(
 .header-left {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  /* 让 Arco 横向菜单自身的内边距生效,  避免贴到 logo */
+  padding: 0 16px;
 }
 
 .logo {

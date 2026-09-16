@@ -5,10 +5,19 @@ from datetime import datetime
 
 # 定义 MessageTask 类，继承自 Base 基类
 class MessageTask(Base):
+    """消息任务（多平台共用调度单元）。
+
+    ``platform`` 取值:
+      * ``wechat`` (默认): 公众号采集任务
+      * ``xhs``:           小红书关键词/账号订阅任务
+
+    ``target_feed_ids`` 为 JSON 字符串, 存的是 ``Feed.id`` 列表,
+    公众号侧兼容旧行为 (历史数据里也曾叫 ``mps_id``)。
+    """
     from_attributes = True
     # 指定数据库表名为 message_tasks
     __tablename__ = 'message_tasks'
-    
+
     # 定义 id 字段，作为主键，同时创建索引
     id = Column(String(255), primary_key=True, index=True)
     # 定义消息类型字段，不允许为空
@@ -24,8 +33,11 @@ class MessageTask(Base):
     headers = Column(Text, nullable=True)
     # 定义Cookie，用于认证
     cookies = Column(Text, nullable=True)
-    # 定义需要通知的微信公众号ID集合
-    mps_id = Column(Text, nullable=False)
+    # 定义需要通知的 feed 列表（JSON 字符串），改名自 mps_id（公众号 fakeid 列表），
+    # 现在统一用 Feed.id, 公众号 fakeid 也是合法 Feed.id (MP_WXS_xxx)。
+    target_feed_ids = Column(Text, nullable=False)
+    # 平台标识: 'wechat' / 'xhs'（默认 'wechat' 兼容历史）
+    platform = Column(String(20), default='wechat', index=True)
     # 定义 cron_exp 表达式
     cron_exp=Column(String(100),nullable='* * 1 * *')
     # 定义任务状态字段，默认值为 pending

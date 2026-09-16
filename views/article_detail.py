@@ -40,7 +40,7 @@ async def article_detail_view(
     try:
         # 查询文章信息
         article_query = session.query(Article, Feed).join(
-            Feed, Article.mp_id == Feed.id
+            Feed, Article.feed_id == Feed.id
         ).filter(Article.id == article_id, Article.status == 1, Feed.status == 1).first()
         
         
@@ -61,20 +61,20 @@ async def article_detail_view(
             defer(Article.content),      # type: ignore
             defer(Article.content_html)  # type: ignore
         ).filter(
-            Article.mp_id == article.mp_id,
+            Article.feed_id == article.feed_id,
             Article.id != article_id,
             Article.status == 1
         ).order_by(Article.publish_time.desc()).limit(5).all()
         
         # 获取上一个和下一个文章ID（排除大字段）
         prev_article = session.query(Article.id, Article.title).filter(
-            Article.mp_id == article.mp_id,
+            Article.feed_id == article.feed_id,
             Article.publish_time < article.publish_time,
             Article.status == 1
         ).order_by(Article.publish_time.desc()).first()
         
         next_article = session.query(Article.id, Article.title).filter(
-            Article.mp_id == article.mp_id,
+            Article.feed_id == article.feed_id,
             Article.publish_time > article.publish_time,
             Article.status == 1
         ).order_by(Article.publish_time.asc()).first()
@@ -104,15 +104,15 @@ async def article_detail_view(
             "publish_time": datetime.fromtimestamp(article.publish_time).strftime('%Y-%m-%d %H:%M') if article.publish_time else "",
             "created_at": article.created_at.strftime('%Y-%m-%d %H:%M') if article.created_at else "",
             "content": processed_content,
-            "mp_name": feed.mp_name if feed else "未知公众号",
-            "mp_id": article.mp_id,
-            "mp_cover": feed.mp_cover if feed else "/static/logo.png",
-            "mp_intro": feed.mp_intro if feed else "",
+            "name": feed.name if feed else "未知公众号",
+            "feed_id": article.feed_id,
+            "cover": feed.cover if feed else "/static/logo.png",
+            "intro": feed.intro if feed else "",
         }
         
         # 构建面包屑
         breadcrumb = [
-            {"name": feed.mp_name, "url": f"/views/articles?mp_id={article_data['mp_id']}"},
+            {"name": feed.name, "url": f"/views/articles?mp_id={article_data['mp_id']}"},
             {"name": article_data["title"][:50] + "..." if len(article_data["title"]) > 50 else article_data["title"], "url": None}
         ]
         

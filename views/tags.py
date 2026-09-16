@@ -52,7 +52,7 @@ async def tags_view(
             article_count = 0
             if mps_ids:
                 article_count = session.query(Article).filter(
-                    Article.mp_id.in_(mps_ids),
+                    Article.feed_id.in_(mps_ids),
                     Article.status == 1
                 ).count()
             
@@ -163,7 +163,7 @@ async def tag_detail_view(
         
         # 构建基础查询条件
         base_conditions = [
-            Article.mp_id.in_(mps_ids),
+            Article.feed_id.in_(mps_ids),
             Article.status == 1
         ]
         
@@ -184,7 +184,7 @@ async def tag_detail_view(
         articles = []
         if mps_ids:
             articles_query = session.query(Article, Feed).join(
-                Feed, Article.mp_id == Feed.id
+                Feed, Article.feed_id == Feed.id
             ).filter(*base_conditions).order_by(Article.publish_time.desc()).offset(offset).limit(limit).all()
             
             for article, feed in articles_query:
@@ -193,11 +193,11 @@ async def tag_detail_view(
                     "title": article.title,
                     "description": article.description or Web.get_description(article.content),
                     "pic_url": Web.get_image_url(article.pic_url),
-                    "mp_cover": Web.get_image_url(feed.mp_cover) if feed else "",
+                    "cover": Web.get_image_url(feed.cover) if feed else "",
                     "url": article.url,
                     "publish_time": datetime.fromtimestamp(article.publish_time).strftime('%Y-%m-%d %H:%M') if article.publish_time else "",
-                    "mp_name": feed.mp_name if feed else "未知公众号",
-                    "mp_id": article.mp_id
+                    "name": feed.name if feed else "未知公众号",
+                    "feed_id": article.feed_id
                 }
                 articles.append(article_data)
         
@@ -210,7 +210,7 @@ async def tag_detail_view(
             "mp_count": len(mps_ids),
             "article_count": total,
             "sync_time": datetime.fromtimestamp(tag.sync_time).strftime('%Y-%m-%d %H:%M') if tag.sync_time else "未同步",
-            "mps": [{"id": mp.id, "name": mp.mp_name, "cover": Web.get_image_url(mp.mp_cover)} for mp in mps_info]
+            "mps": [{"id": mp.id, "name": mp.name, "cover": Web.get_image_url(mp.cover)} for mp in mps_info]
         }
         
         # 计算分页信息

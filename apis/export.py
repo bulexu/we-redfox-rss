@@ -27,7 +27,7 @@ async def export_mps(
         from core.models.feed import Feed
         query = session.query(Feed)
         if kw:
-            query = query.filter(Feed.mp_name.ilike(f"%{kw}%"))
+            query = query.filter(Feed.name.ilike(f"%{kw}%"))
 
         mps = query.order_by(Feed.created_at.desc()).limit(limit).offset(offset).all()
 
@@ -35,9 +35,9 @@ async def export_mps(
         headers = ["id", "公众号名称", "封面图", "简介", "状态", "创建时间", "faker_id"]
         data = [[
             mp.id,
-            mp.mp_name,
-            mp.mp_cover,
-            mp.mp_intro,
+            mp.name,
+            mp.cover,
+            mp.intro,
             mp.status,
             mp.created_at.isoformat(),
             mp.faker_id
@@ -111,8 +111,8 @@ async def import_mps(
 
             if existing:
                 # 更新现有记录
-                existing.mp_cover = mp_cover
-                existing.mp_intro = mp_intro
+                existing.cover = mp_cover
+                existing.intro = mp_intro
                 existing.status = status_val
                 existing.faker_id = faker_id
                 updated += 1
@@ -120,9 +120,9 @@ async def import_mps(
                 # 创建新记录
                 mp = Feed(
                     id=mp_id,
-                    mp_name=mp_name,
-                    mp_cover=mp_cover,
-                    mp_intro=mp_intro,
+                    name=mp_name,
+                    cover=mp_cover,
+                    intro=mp_intro,
                     status=status_val,
                     faker_id=faker_id,
                     created_at=datetime.now()
@@ -170,7 +170,7 @@ async def export_mps_opml(
         from core.models.feed import Feed
         query = session.query(Feed)
         if kw:
-            query = query.filter(Feed.mp_name.ilike(f"%{kw}%"))
+            query = query.filter(Feed.name.ilike(f"%{kw}%"))
 
         mps = query.order_by(Feed.created_at.desc()).limit(limit).offset(offset).all()
         rss_domain=cfg.get("rss.base_url",str(request.base_url))
@@ -188,7 +188,7 @@ async def export_mps_opml(
   </body>
 </opml>'''.format(
             date=datetime.now().isoformat(),
-            outlines=''.join([f'<outline text="{mp.mp_name}" title="{mp.mp_name}" type="rss"  xmlUrl="{rss_domain}feed/{mp.id}.atom"/>\n' for mp in mps])
+            outlines=''.join([f'<outline text="{mp.name}" title="{mp.name}" type="rss"  xmlUrl="{rss_domain}feed/{mp.id}.atom"/>\n' for mp in mps])
         )
 
         # 创建临时OPML文件
@@ -230,7 +230,7 @@ async def export_tags(
 
         tags = query.order_by(Tags.created_at.desc()).limit(limit).offset(offset).all()
 
-        headers = ["id", "标签名称", "封面图", "描述", "状态", "创建时间", "mps_id"]
+        headers = ["id", "标签名称", "封面图", "描述", "状态", "创建时间", "feed_ids"]
         data = []
         for tag in tags:
             data.append([
@@ -240,7 +240,7 @@ async def export_tags(
                 tag.intro,
                 tag.status,
                 tag.created_at.isoformat() if tag.created_at else "",
-                tag.mps_id
+                tag.feed_ids
             ])
 
         # 创建临时CSV文件
@@ -279,7 +279,7 @@ async def import_tags(
         contents = (await file.read()).decode('utf-8-sig')
         csv_reader = csv.DictReader(io.StringIO(contents))
 
-        required_columns = ["标签名称", "状态", "mps_id"]
+        required_columns = ["标签名称", "状态", "feed_ids"]
         if not all(col in csv_reader.fieldnames for col in required_columns):
             missing_cols = [col for col in required_columns if col not in csv_reader.fieldnames]
             raise HTTPException(
@@ -312,14 +312,14 @@ async def import_tags(
                 status_val = int(row.get("状态", 1))
             except (ValueError, TypeError):
                 status_val = 1
-            mps_id_str = row.get("mps_id") or "[]"
+            feed_ids_str = row.get("feed_ids") or "[]"
 
             if existing_tag:
                 existing_tag.name = tag_name
                 existing_tag.cover = cover
                 existing_tag.intro = intro
                 existing_tag.status = status_val
-                existing_tag.mps_id = mps_id_str
+                existing_tag.feed_ids = feed_ids_str
                 existing_tag.updated_at = datetime.now()
                 updated += 1
             else:
@@ -329,7 +329,7 @@ async def import_tags(
                     cover=cover,
                     intro=intro,
                     status=status_val,
-                    mps_id=mps_id_str,
+                    feed_ids=feed_ids_str,
                     created_at=datetime.now(),
                     updated_at=datetime.now()
                 )

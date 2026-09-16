@@ -62,9 +62,9 @@ async def articles_view(
         # 构建基础查询条件
         base_conditions = [Article.status == 1]
         if mp_id:
-            base_conditions.append(Article.mp_id == mp_id)
+            base_conditions.append(Article.feed_id == mp_id)
         if mps_ids:
-            base_conditions.append(Article.mp_id.in_(mps_ids))
+            base_conditions.append(Article.feed_id.in_(mps_ids))
         if keyword and keyword.strip():
             search_filter = format_search_kw(keyword.strip())
             if search_filter is not None:
@@ -85,7 +85,7 @@ async def articles_view(
         
         # 主查询：一次性获取文章和Feed信息（排除大字段 content 和 content_html）
         query = session.query(Article, Feed).join(
-            Feed, Article.mp_id == Feed.id, isouter=True
+            Feed, Article.feed_id == Feed.id, isouter=True
         ).options(
             defer(Article.content),      # type: ignore
             defer(Article.content_html)  # type: ignore
@@ -114,9 +114,9 @@ async def articles_view(
                 "url": article.url,
                 "publish_time": datetime.fromtimestamp(article.publish_time).strftime('%Y-%m-%d %H:%M') if article.publish_time else "",
                 "created_at": article.created_at.strftime('%Y-%m-%d %H:%M') if article.created_at else "",
-                "mp_name": feed.mp_name if feed else "未知公众号",
-                "mp_id": article.mp_id,
-                "mp_cover": Web.get_image_url(feed.mp_cover) if feed else "",
+                "name": feed.name if feed else "未知公众号",
+                "feed_id": article.feed_id,
+                "cover": Web.get_image_url(feed.cover) if feed else "",
                 "is_read": bool(article.is_read),
             }
             article_list.append(article_data)
@@ -125,7 +125,7 @@ async def articles_view(
         filter_info = {}
         if mp_id and mp_id in feed_dict:
             feed = feed_dict[mp_id]
-            filter_info["mp"] = {"id": feed.id, "name": feed.mp_name}
+            filter_info["mp"] = {"id": feed.id, "name": feed.name}
         
         if tag_id:
             tag = session.query(Tags.id, Tags.name).filter(Tags.id == tag_id).first()
@@ -150,15 +150,15 @@ async def articles_view(
             from sqlalchemy import func
             
             popular_mps = session.query(
-                Feed.id, Feed.mp_name,
+                Feed.id, Feed.name,
                 func.count(Article.id).label('article_count')
             ).join(
-                Article, Feed.id == Article.mp_id
+                Article, Feed.id == Article.feed_id
             ).filter(
                 Article.status == 1,
                 Feed.status == 1
             ).group_by(
-                Feed.id, Feed.mp_name
+                Feed.id, Feed.name
             ).order_by(
                 func.count(Article.id).desc()
             ).limit(10).all()
@@ -183,10 +183,10 @@ async def articles_view(
         
         feed_info = feed_dict.get(mp_id) if mp_id else None
         info = {
-            "mp_name": feed_info.mp_name if feed_info else "",
-            "mp_cover": Web.get_image_url(feed_info.mp_cover) if feed_info else "",
-            "mp_intro": feed_info.mp_intro if feed_info else "",
-            "mp_id": mp_id,
+            "name": feed_info.name if feed_info else "",
+            "cover": Web.get_image_url(feed_info.cover) if feed_info else "",
+            "intro": feed_info.intro if feed_info else "",
+            "feed_id": mp_id,
         } if feed_info else {}
         
         # 构建分页URL辅助函数
@@ -230,7 +230,7 @@ async def articles_view(
             "mp_options": mp_options,
             "info": info,
             "current_filters": {
-                "mp_id": mp_id,
+                "feed_id": mp_id,
                 "tag_id": tag_id,
                 "keyword": keyword,
                 "sort": sort,

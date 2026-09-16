@@ -1,11 +1,17 @@
-"""飞书多维表（Lark Bitable）配置 + 推送追踪模型。
+"""飞书多维表（Lark Bitable）配置模型。
 
-两张表:
-  * LarkBitable       — 每个 Bitable 一行,  字段映射 + 关联公众号
-  * ArticleLarkPush   — 「已推送」追踪表, 复合主键 (article_id, bitable_id)
+单表 ``LarkBitable``: 每个 Bitable 一行,  字段映射 + 关联 feed + 推送时间水印。
 
-两张表都通过 SQLAlchemy ``Base.metadata.create_all()`` 自动建表,
-与现有 AccessKey / CascadeNode 一致。
+去重机制 (2024 重构):
+  原先依赖 ``article_lark_pushes(article_id, bitable_id)`` 复合主键做幂等,
+  现简化为 ``LarkBitable.last_pushed_at`` 作为 publish_time 水印:
+    * ``last_pushed_at IS NULL`` (新表 / 未推过):  推送全部命中 feed_ids 的文章
+    * ``last_pushed_at = X``:  仅推送 ``article.publish_time > X`` 的文章
+  每次成功推送后把 ``last_pushed_at`` 更新为 ``max(原值, article.publish_time)``。
+  失败的 ``article`` 不更新水印,  下个周期会重试(只要它仍是「比水印新」)。
+
+表通过 SQLAlchemy ``Base.metadata.create_all()`` 自动建表,  与现有
+``AccessKey`` / ``CascadeNode`` 一致。
 """
 from __future__ import annotations
 
@@ -25,8 +31,8 @@ class LarkBitable(Base):
     字段映射 ``field_mapping`` 存为 JSON 字符串,
     形如 ``{"title":"标题","url":"链接",...}``。
 
-    关联 Feed id 列表 ``mp_ids`` 也是字符串,  存 JSON 数组,  形如
-    ``["MP_WXS_abc","MP_WXS_xyz"]``。
+    关联 Feed id 列表 ``feed_ids`` (改名自 ``mp_ids``) 也是字符串,
+    存 JSON 数组,  形如 ``["MP_WXS_abc","XHS_KW_美食","XHS_U_xxx"]``。
     """
     __tablename__ = "lark_bitables"
 
@@ -34,7 +40,7 @@ class LarkBitable(Base):
     name = Column(String(255), nullable=False)
     app_token = Column(String(255), nullable=False)
     table_id = Column(String(255), nullable=False)
-    mp_ids = Column(Text, default="[]", nullable=False)
+    feed_ids = Column(Text, default="[]", nullable=False)
     field_mapping = Column(Text, default="{}", nullable=False)
     enabled = Column(Boolean, default=True, nullable=False)
     last_pushed_at = Column(BigInteger, nullable=True)
@@ -43,16 +49,16 @@ class LarkBitable(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    def get_mp_ids(self) -> List[str]:
+    def get_feed_ids(self) -> List[str]:
         try:
-            data = json.loads(self.mp_ids or "[]")
+            data = json.loads(self.feed_ids or "[]")
             return [str(x) for x in data] if isinstance(data, list) else []
         except (json.JSONDecodeError, TypeError):
             return []
 
-    def set_mp_ids(self, ids: List[str]) -> None:
+    def set_feed_ids(self, ids: List[str]) -> None:
         cleaned = [str(x) for x in (ids or []) if x]
-        self.mp_ids = json.dumps(cleaned, ensure_ascii=False)
+        self.feed_ids = json.dumps(cleaned, ensure_ascii=False)
 
     def get_field_mapping(self) -> Dict[str, str]:
         try:
@@ -76,7 +82,7 @@ class LarkBitable(Base):
             "name": self.name,
             "app_token": self.app_token,
             "table_id": self.table_id,
-            "mp_ids": self.get_mp_ids(),
+            "feed_ids": self.get_feed_ids(),
             "field_mapping": self.get_field_mapping(),
             "enabled": bool(self.enabled),
             "last_pushed_at": self.last_pushed_at,
@@ -85,20 +91,6 @@ class LarkBitable(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
-
-
-class ArticleLarkPush(Base):
-    """「这篇文章已推给该 Bitable」追踪记录。
-
-    复合主键 ``(article_id, bitable_id)`` 保证一对一幂等,
-    worker 命中即跳过推送。
-    """
-    __tablename__ = "article_lark_pushes"
-
-    article_id = Column(String(255), primary_key=True)
-    bitable_id = Column(String(255), primary_key=True)
-    record_id = Column(String(255), nullable=True)
-    pushed_at = Column(BigInteger, nullable=False)
 
 
 # LHS 白名单: 字段映射允许的左侧 key 集合 (来自 Article / Feed)。
@@ -111,8 +103,8 @@ ALLOWED_FIELD_KEYS: frozenset = frozenset({
     "content",
     "pic_url",
     "publish_time",
-    "mp_id",
-    "mp_name",
+    "feed_id",
+    "name",  # Feed.name (改名自 mp_name)
     "art_type",
 })
 

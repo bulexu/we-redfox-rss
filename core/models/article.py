@@ -3,19 +3,19 @@ from sqlalchemy import BigInteger
 
 from  .base import Base,Column,String,Integer,DateTime,Text,DATA_STATUS
 class ArticleBase(Base):
-    """文章基础模型"""
+    """文章基础模型（公众号 + 小红书共用）"""
     from_attributes = True
     __tablename__ = 'articles'
     # 文章基础属性
-    id = Column(String(255), primary_key=True)  # 文章全局唯一ID（App Message ID / aid）
-    mp_id = Column(String(255),index=True)  # 公众号ID
+    id = Column(String(255), primary_key=True)  # 文章全局唯一ID（公众号: App Message ID / 小红书: workId）
+    feed_id = Column(String(255), index=True)  # 订阅源ID（公众号: MP_WXS_xxx / 小红书: XHS_KW_xxx, XHS_U_xxx）
     title = Column(String(1000))  # 文章标题
-    pic_url = Column(String(500))  # 封面图片URL地址（对应 cover / cover_img）
-    url=Column(String(500))  # 文章的永久链接（URL），用户点击阅读的地址（对应 link）
-    description=Column(Text)  # 文章摘要（对应 digest）
+    pic_url = Column(String(500))  # 封面图片URL地址（小红书: coverUrl）
+    url=Column(String(500))  # 文章的永久链接（URL），用户点击阅读的地址（小红书: workUrl）
+    description=Column(Text)  # 文章摘要（对应 digest / 小红书 RSS 摘要）
     extinfo = Column(Text)  # 扩展信息
     status = Column(Integer,default=1,index=True)  # 文章状态：删除状态标记（对应 is_deleted，false 表示未删除）
-    publish_time = Column(Integer,index=True)  # 文章发布时间（对应 update_time，Unix时间戳格式）
+    publish_time = Column(Integer,index=True)  # 文章发布时间（对应 update_time，Unix时间戳格式，单位：秒）
     create_time = Column(Integer,index=True)  # 文章创建时间（Unix时间戳格式）
     publish_type = Column(Integer,index=True)  # 发布类型
     publish_src = Column(Integer,index=True)  # 发布来源
@@ -31,6 +31,15 @@ class ArticleBase(Base):
     item_show_type = Column(Integer,index=True)  # 展示类型（对应 item_show_type，0通常为普通图文，10可能为特定的无图或特殊样式）
     copyright_stat = Column(Integer,index=True)  # 原创状态（0通常表示非原创，1表示原创）
     has_red_packet_cover = Column(Integer,index=True)  # 封面是否有红包挂件（0为无）
+    # 小红书扩展字段
+    author = Column(String(255))  # 作者名（小红书 accountNickname）
+    author_id = Column(String(255), index=True)  # 作者 ID（小红书 accountUserid，便于按作者聚合）
+    image_urls = Column(Text)  # 图片 URL 列表（JSON 字符串；当前存 [coverUrl]，后续接入 get_work 补全）
+    liked_count = Column(Integer, default=0)  # 点赞数
+    comments_count = Column(Integer, default=0)  # 评论数
+    collected_count = Column(Integer, default=0)  # 收藏数
+    read_count = Column(Integer, default=0)  # 阅读数
+    share_count = Column(Integer, default=0)  # 分享数
     # 系统字段
     created_at = Column(DateTime)  # 记录创建时间
     updated_at = Column(BigInteger)  # 记录更新时间
@@ -44,13 +53,13 @@ class ArticleBase(Base):
 class Article(ArticleBase):
     content = Column(Text)
     content_html = Column(Text)
-    
+
     def to_dict(self):
         """将Article对象转换为字典"""
         return {
             # 文章基础属性
             'id': self.id,
-            'mp_id': self.mp_id,
+            'feed_id': self.feed_id,
             'title': self.title,
             'pic_url': self.pic_url,
             'url': self.url,
@@ -72,6 +81,15 @@ class Article(ArticleBase):
             'copyright_stat': self.copyright_stat,
             'has_red_packet_cover': self.has_red_packet_cover,
             'publish_info': self.publish_info,
+            # 小红书扩展字段
+            'author': self.author,
+            'author_id': self.author_id,
+            'image_urls': self.image_urls,
+            'liked_count': self.liked_count,
+            'comments_count': self.comments_count,
+            'collected_count': self.collected_count,
+            'read_count': self.read_count,
+            'share_count': self.share_count,
             # 内容
             'content': self.content,
             'content_html': self.content_html,

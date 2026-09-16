@@ -10,17 +10,11 @@ class User(Base):
     nickname = Column(String(50), default='')  # 昵称
     avatar = Column(String(255), default='/static/default-avatar.png')  # 头像
     email = Column(String(50), default='')
-    
-    # 原有字段保持不变
-    mp_name = Column(String(255))
-    mp_cover = Column(String(255))
-    mp_intro = Column(String(255))
     status = Column(Integer)
     sync_time = Column(DateTime)
     update_time = Column(DateTime)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
-    faker_id = Column(String(255))
 
     def verify_password(self, password: str) -> bool:
         """验证密码"""

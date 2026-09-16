@@ -136,11 +136,11 @@ class WXArticleFetcher:
             "publish_time": 0,
             "content": "",
             "mp_info": {
-                "mp_name": "",
+                "name": "",
                 "logo": "",
                 "biz": ""
             },
-            "mp_id": "",
+            "feed_id": "",
             "fetch_error": ""
         }
 
@@ -156,6 +156,8 @@ class WXArticleFetcher:
 
         # 检查各种异常情况
         if "当前环境异常，完成验证后即可继续访问" in body_text:
+            # 写入 Redis 统计（供 /env-exception 页面查询）
+            self._record_env_exception_async(page=page, url=url)
             info["content"] = ""
             info["fetch_error"] = "当前环境异常，完成验证后即可继续访问"
             return info
@@ -272,7 +274,7 @@ class WXArticleFetcher:
                 biz = self._extract_biz(url, content or "")
 
             info["mp_info"] = {
-                "mp_name": mp_name or "未知公众号",
+                "name": mp_name or "未知公众号",
                 "logo": logo_src or "",
                 "biz": biz or ""
             }
@@ -287,7 +289,7 @@ class WXArticleFetcher:
         except Exception as e:
             print_error(f"获取公众号信息失败: {str(e)}")
             info["mp_info"] = {
-                "mp_name": "未知公众号",
+                "name": "未知公众号",
                 "logo": "",
                 "biz": ""
             }
@@ -406,6 +408,37 @@ class WXArticleFetcher:
         except Exception as e:
             print_warning(f"等待图片加载时出错: {e}")
             
+    async def _record_env_exception_async(self, page, url: str) -> None:
+        """把环境异常事件写入 Redis 统计（/env-exception 页面查询）。
+
+        仅在 :meth:`_extract_from_page` 检测到微信返回「当前环境异常」拦截页
+        时调用，失败也不会抛出 — Redis 不可用不应阻塞抓取主流程。
+        """
+        try:
+            from core.redis_client import record_env_exception
+
+            # 从 URL 的 __biz 参数反解 mp_id
+            mp_id = ""
+            biz = self._extract_biz(url, "")
+            if biz:
+                try:
+                    mp_id = "MP_WXS_" + base64.b64decode(biz).decode("utf-8")
+                except Exception:
+                    mp_id = ""
+
+            # 从 og:article:author 拿公众号名（页面已加载，直接读 meta）
+            mp_name = ""
+            try:
+                mp_name = await page.locator(
+                    'meta[property="og:article:author"]'
+                ).get_attribute("content") or ""
+            except Exception:
+                mp_name = ""
+
+            record_env_exception(url=url, name=mp_name, mp_id=mp_id)
+        except Exception as e:
+            print_warning(f"记录环境异常失败: {e}")
+
     async def _extract_publish_time(self, page) -> int:
         """
         提取发布时间(异步)

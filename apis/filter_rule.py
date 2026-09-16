@@ -15,7 +15,7 @@ router = APIRouter(prefix="/filter-rules", tags=["过滤规则管理"])
 
 
 class FilterRuleCreate(BaseModel):
-    mp_id: str  # JSON字符串，存储多个公众号ID数组
+    feed_id: str  # JSON字符串，存储多个公众号ID数组
     rule_name: str
     remove_ids: Optional[List[str]] = None
     remove_classes: Optional[List[str]] = None
@@ -40,7 +40,7 @@ class FilterRuleUpdate(BaseModel):
 
 @router.get("", summary="获取过滤规则列表")
 async def get_filter_rules(
-    mp_id: str = Query(None, description="公众号ID，不传则返回所有"),
+    feed_id: str = Query(None, description="公众号ID，不传则返回所有"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -49,27 +49,27 @@ async def get_filter_rules(
     """获取过滤规则列表，支持按公众号筛选"""
     try:
         query = db.query(FilterRule)
-        if mp_id:
-            query = query.filter(FilterRule.mp_id == mp_id)
+        if feed_id:
+            query = query.filter(FilterRule.feed_id == feed_id)
 
         total = query.count()
         rules = query.order_by(FilterRule.priority.desc(), FilterRule.created_at.desc()).limit(limit).offset(offset).all()
 
         rules_list = []
         for rule in rules:
-            # 解析 mp_id JSON 字符串为数组
-            mp_ids = []
+            # 解析 feed_id JSON 字符串为数组
+            feed_ids = []
             try:
-                if rule.mp_id:
-                    mp_ids = json.loads(rule.mp_id) if rule.mp_id.startswith('[') else [rule.mp_id]
+                if rule.feed_id:
+                    feed_ids = json.loads(rule.feed_id) if rule.feed_id.startswith('[') else [rule.feed_id]
             except:
-                mp_ids = [rule.mp_id] if rule.mp_id else []
+                feed_ids = [rule.feed_id] if rule.feed_id else []
 
             rules_list.append({
                 "id": rule.id,
-                "mp_id": rule.mp_id,
-                "mp_ids": mp_ids,
-                "is_global": len(mp_ids) == 0,  # 标记是否为全局规则
+                "feed_id": rule.feed_id,
+                "feed_ids": feed_ids,
+                "is_global": len(feed_ids) == 0,  # 标记是否为全局规则
                 "rule_name": rule.rule_name,
                 "remove_ids": rule.remove_ids or [],
                 "remove_classes": rule.remove_classes or [],
@@ -122,19 +122,19 @@ async def get_filter_rule(
                 detail=error_response(code=40401, message="过滤规则不存在")
             )
 
-        # 解析 mp_id JSON 字符串为数组
-        mp_ids = []
+        # 解析 feed_id JSON 字符串为数组
+        feed_ids = []
         try:
-            if rule.mp_id:
-                mp_ids = json.loads(rule.mp_id) if rule.mp_id.startswith('[') else [rule.mp_id]
+            if rule.feed_id:
+                feed_ids = json.loads(rule.feed_id) if rule.feed_id.startswith('[') else [rule.feed_id]
         except:
-            mp_ids = [rule.mp_id] if rule.mp_id else []
+            feed_ids = [rule.feed_id] if rule.feed_id else []
 
         return success_response(data={
             "id": rule.id,
-            "mp_id": rule.mp_id,
-            "mp_ids": mp_ids,
-            "is_global": len(mp_ids) == 0,  # 标记是否为全局规则
+            "feed_id": rule.feed_id,
+            "feed_ids": feed_ids,
+            "is_global": len(feed_ids) == 0,  # 标记是否为全局规则
             "rule_name": rule.rule_name,
             "remove_ids": rule.remove_ids or [],
             "remove_classes": rule.remove_classes or [],
@@ -166,7 +166,7 @@ async def create_filter_rule(
     """为指定公众号创建过滤规则，支持多公众号"""
     try:
         new_rule = FilterRule(
-            mp_id=rule.mp_id,
+            feed_id=rule.feed_id,
             rule_name=rule.rule_name,
             remove_ids=rule.remove_ids,
             remove_classes=rule.remove_classes,
@@ -185,7 +185,7 @@ async def create_filter_rule(
 
         return success_response(data={
             "id": new_rule.id,
-            "mp_id": new_rule.mp_id,
+            "feed_id": new_rule.feed_id,
             "rule_name": new_rule.rule_name,
             "message": "过滤规则创建成功"
         })
@@ -271,9 +271,9 @@ async def delete_filter_rule(
         )
 
 
-@router.get("/mp/{mp_id}/active", summary="获取公众号的启用规则")
+@router.get("/mp/{feed_id}/active", summary="获取公众号的启用规则")
 async def get_active_rules_for_mp(
-    mp_id: str,
+    feed_id: str,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user_or_ak)
 ):
@@ -286,14 +286,14 @@ async def get_active_rules_for_mp(
 
         rules_list = []
         for rule in rules:
-            # 解析 mp_id JSON，检查是否包含指定的 mp_id 或者是全局规则（空数组）
+            # 解析 feed_id JSON，检查是否包含指定的 feed_id 或者是全局规则（空数组）
             try:
-                mp_ids = json.loads(rule.mp_id) if rule.mp_id and rule.mp_id.startswith('[') else ([rule.mp_id] if rule.mp_id else [])
+                feed_ids = json.loads(rule.feed_id) if rule.feed_id and rule.feed_id.startswith('[') else ([rule.feed_id] if rule.feed_id else [])
             except:
-                mp_ids = [rule.mp_id] if rule.mp_id else []
+                feed_ids = [rule.feed_id] if rule.feed_id else []
 
-            # 匹配条件：mp_id 在列表中，或者是全局规则（空数组）
-            if not mp_ids or mp_id in mp_ids:
+            # 匹配条件：feed_id 在列表中，或者是全局规则（空数组）
+            if not feed_ids or feed_id in feed_ids:
                 rules_list.append({
                     "id": rule.id,
                     "rule_name": rule.rule_name,
@@ -315,11 +315,11 @@ async def get_active_rules_for_mp(
         )
 
 
-def get_filter_rules_for_mp(mp_id: str) -> list:
+def get_filter_rules_for_mp(feed_id: str) -> list:
     """
     获取指定公众号的所有启用过滤规则（供内部调用）
     返回规则列表，用于HTML过滤
-    支持多公众号匹配和全局规则（空mp_id数组）
+    支持多公众号匹配和全局规则（空feed_id数组）
     """
     session = DB.get_session()
     try:
@@ -332,34 +332,34 @@ def get_filter_rules_for_mp(mp_id: str) -> list:
         # 在 Python 层面过滤匹配的规则
         matched_rules = []
         for rule in rules:
-            # 解析 mp_id JSON
-            mp_ids = []
+            # 解析 feed_id JSON
+            feed_ids = []
             try:
-                if rule.mp_id:
+                if rule.feed_id:
                     # 检查是否为 JSON 数组格式
-                    if rule.mp_id.strip().startswith('['):
-                        mp_ids = json.loads(rule.mp_id)
+                    if rule.feed_id.strip().startswith('['):
+                        feed_ids = json.loads(rule.feed_id)
                         # 确保解析结果是列表
-                        if not isinstance(mp_ids, list):
-                            mp_ids = [str(mp_ids)]
+                        if not isinstance(feed_ids, list):
+                            feed_ids = [str(feed_ids)]
                     else:
                         # 非 JSON 格式，作为单个 ID 处理
-                        mp_ids = [rule.mp_id]
+                        feed_ids = [rule.feed_id]
             except Exception as e:
-                print(f"[FilterRule] 解析 mp_id 失败: {rule.mp_id}, 错误: {e}")
-                mp_ids = []
+                print(f"[FilterRule] 解析 feed_id 失败: {rule.feed_id}, 错误: {e}")
+                feed_ids = []
 
-            # 匹配条件：mp_id 在列表中，或者是全局规则（空数组）
-            is_global = len(mp_ids) == 0
-            is_match = is_global or mp_id in mp_ids
+            # 匹配条件：feed_id 在列表中，或者是全局规则（空数组）
+            is_global = len(feed_ids) == 0
+            is_match = is_global or feed_id in feed_ids
 
             if is_match:
-                print(f"[FilterRule] 匹配规则: {rule.rule_name}, mp_id={mp_id}, rule_mp_ids={mp_ids}, is_global={is_global}")
+                print(f"[FilterRule] 匹配规则: {rule.rule_name}, feed_id={feed_id}, rule_feed_ids={feed_ids}, is_global={is_global}")
                 matched_rules.append(rule)
             else:
-                print(f"[FilterRule] 跳过规则: {rule.rule_name}, mp_id={mp_id}, rule_mp_ids={mp_ids}")
+                print(f"[FilterRule] 跳过规则: {rule.rule_name}, feed_id={feed_id}, rule_feed_ids={feed_ids}")
 
-        print(f"[FilterRule] 为公众号 {mp_id} 找到 {len(matched_rules)} 条规则")
+        print(f"[FilterRule] 为公众号 {feed_id} 找到 {len(matched_rules)} 条规则")
         return matched_rules
     except Exception as e:
         import traceback
@@ -368,13 +368,13 @@ def get_filter_rules_for_mp(mp_id: str) -> list:
         return []
 
 
-def apply_filter_rules(html_content: str, mp_id: str) -> str:
+def apply_filter_rules(html_content: str, feed_id: str) -> str:
     """
     对HTML内容应用指定公众号的过滤规则
 
     Args:
         html_content: 原始HTML内容
-        mp_id: 公众号ID
+        feed_id: 公众号ID
 
     Returns:
         过滤后的HTML内容
@@ -382,7 +382,7 @@ def apply_filter_rules(html_content: str, mp_id: str) -> str:
     if not html_content:
         return html_content
 
-    rules = get_filter_rules_for_mp(mp_id)
+    rules = get_filter_rules_for_mp(feed_id)
     if not rules:
         return html_content
 

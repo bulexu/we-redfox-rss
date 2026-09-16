@@ -339,9 +339,9 @@ async def get_feeds(
             feed_list.append({
                 "id": feed.id,
                 "faker_id": feed.faker_id,
-                "mp_name": feed.mp_name,
-                "mp_cover": feed.mp_cover,
-                "mp_intro": feed.mp_intro,
+                "name": feed.name,
+                "cover": feed.cover,
+                "intro": feed.intro,
                 "status": feed.status,
                 "created_at": feed.created_at.isoformat() if feed.created_at else None,
                 "updated_at": feed.updated_at.isoformat() if feed.updated_at else None
@@ -376,7 +376,7 @@ async def get_message_tasks(
                 "message_type": task.message_type,
                 "message_template": task.message_template,
                 "web_hook_url": task.web_hook_url,
-                "mps_id": task.mps_id,
+                "target_feed_ids": task.target_feed_ids,
                 "cron_exp": task.cron_exp,
                 "status": task.status,
                 "headers": task.headers,
@@ -737,7 +737,7 @@ async def upload_articles(
                 # 创建新文章
                 article = Article(
                     id=article_data.get("id"),
-                    mp_id=article_data.get("mp_id"),
+                    feed_id=article_data.get("feed_id"),
                     title=article_data.get("title"),
                     pic_url=article_data.get("pic_url"),
                     url=article_data.get("url"),
@@ -860,7 +860,7 @@ async def dispatch_tasks(
         
         task_info = []
         for task in tasks:
-            mps_list = json.loads(task.mps_id) if task.mps_id else []
+            mps_list = json.loads(task.target_feed_ids) if task.target_feed_ids else []
             task_info.append({
                 "id": task.id,
                 "name": task.name,
@@ -1000,7 +1000,7 @@ async def get_feed_status(
     feed_id: Optional[str] = Query(None, description="公众号ID，不指定则返回所有"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    sort_by: Optional[str] = Query(None, description="排序字段: mp_name, article_count, update_status, latest_article_time, updated_at"),
+    sort_by: Optional[str] = Query(None, description="排序字段: name, article_count, update_status, latest_article_time, updated_at"),
     sort_order: Optional[str] = Query("desc", description="排序方向: asc, desc"),
     current_user: dict = Depends(get_current_user_or_ak)
 ):
@@ -1034,12 +1034,12 @@ async def get_feed_status(
         for feed in feeds:
             # 获取文章数量
             article_count = session.query(Article).filter(
-                Article.mp_id == feed.id
+                Article.feed_id == feed.id
             ).count()
             
             # 获取最近一篇文章的时间和来源节点
             latest_article = session.query(Article).filter(
-                Article.mp_id == feed.id
+                Article.feed_id == feed.id
             ).order_by(Article.created_at.desc()).first()
             
             latest_article_time = latest_article.created_at.isoformat() if latest_article and latest_article.created_at else None
@@ -1083,8 +1083,8 @@ async def get_feed_status(
             
             feed_status_list.append({
                 "id": feed.id,
-                "mp_name": feed.mp_name,
-                "mp_cover": feed.mp_cover,
+                "name": feed.name,
+                "cover": feed.cover,
                 "status": feed.status,
                 "article_count": article_count,
                 "latest_article_time": latest_article_time,
@@ -1112,8 +1112,8 @@ async def get_feed_status(
                 feed_status_list.sort(key=lambda x: x.get("latest_article_time") or "", reverse=reverse)
             elif sort_by == "article_count":
                 feed_status_list.sort(key=lambda x: x.get("article_count", 0), reverse=reverse)
-            elif sort_by == "mp_name":
-                feed_status_list.sort(key=lambda x: x.get("mp_name", ""), reverse=reverse)
+            elif sort_by == "name":
+                feed_status_list.sort(key=lambda x: x.get("name", ""), reverse=reverse)
             elif sort_by == "updated_at":
                 feed_status_list.sort(key=lambda x: x.get("updated_at") or "", reverse=reverse)
         else:

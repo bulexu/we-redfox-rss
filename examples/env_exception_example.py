@@ -15,7 +15,7 @@ def test_record_exception():
     
     success = record_env_exception(
         url=test_url,
-        mp_name=test_mp_name,
+        name=test_mp_name,
         mp_id=test_mp_id
     )
     

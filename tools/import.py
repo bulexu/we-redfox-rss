@@ -95,7 +95,7 @@ def import_mps(data_file:str="./data/data1.txt"):
                 # 搜索公众号
                 print(f"正在搜索: {mp_name}")
                 # 检查是否已存在
-                existing_feed = session.query(Feed).filter(Feed.mp_name == mp_name).first()
+                existing_feed = session.query(Feed).filter(Feed.name == mp_name).first()
                 
                 if existing_feed:
                     print(f"  → 已存在，跳过: {mp_name}")
@@ -126,9 +126,9 @@ def import_mps(data_file:str="./data/data1.txt"):
                     # 创建新的Feed记录
                     new_feed = Feed(
                         id=f"MP_WXS_{mpx_id}",
-                        mp_name=mp_name,
-                        mp_cover=mp_cover,
-                        mp_intro=mp_intro,
+                        name=mp_name,
+                        cover=mp_cover,
+                        intro=mp_intro,
                         status=1,
                         created_at=now,
                         updated_at=now,

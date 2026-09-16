@@ -91,13 +91,20 @@ if __name__ == '__main__':
         print_success("已开启自动修正文章任务")
     else:
         print_warning("未开启自动修正文章任务")
-    
+
     # 启动文章统计定时刷新任务
     if cfg.get("server.article_stats_refresh_enabled", False):  # 默认关闭
         from jobs.mps import start_article_stats_refresh
         start_article_stats_refresh()
     else:
         print_warning("文章统计定时刷新任务未启用")
+
+    # 启动飞书多维表自动推送扫描 (lark.push_interval_hours 控制间隔; 0 = 关闭)
+    try:
+        from jobs.lark_push import start_lark_push_scheduler
+        start_lark_push_scheduler()
+    except Exception as e:  # noqa: BLE001
+        print_warning(f"启动飞书自动推送扫描任务失败: {e}")
     
     print("启动服务器")
     AutoReload=cfg.get("server.auto_reload",False)

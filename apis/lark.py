@@ -19,7 +19,6 @@ from core.db import DB
 from core.lark_client import LarkError, get_lark_client
 from core.models.lark_bitable import (
     ALLOWED_FIELD_KEYS,
-    ArticleLarkPush,
     LarkBitable,
     validate_field_mapping,
 )
@@ -64,7 +63,7 @@ def _bitable_to_dict(b: LarkBitable) -> dict:
         "name": b.name,
         "app_token": b.app_token,
         "table_id": b.table_id,
-        "mp_ids": b.get_mp_ids(),
+        "feed_ids": b.get_feed_ids(),
         "field_mapping": b.get_field_mapping(),
         "enabled": bool(b.enabled),
         "last_pushed_at": b.last_pushed_at,
@@ -80,7 +79,7 @@ def _bitable_to_dict(b: LarkBitable) -> dict:
 @router.get("/bitables", summary="列出飞书多维表配置")
 async def list_bitables(
     enabled: Optional[bool] = Query(None),
-    mp_id: Optional[str] = Query(None, description="按关联公众号过滤"),
+    feed_id: Optional[str] = Query(None, description="按关联 feed_id 过滤"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user_or_ak),
@@ -91,8 +90,8 @@ async def list_bitables(
         if enabled is not None:
             query = query.filter(LarkBitable.enabled == enabled)
         all_rows = query.order_by(LarkBitable.created_at.desc()).all()
-        if mp_id:
-            all_rows = [b for b in all_rows if mp_id in b.get_mp_ids()]
+        if feed_id:
+            all_rows = [b for b in all_rows if feed_id in b.get_feed_ids()]
         total = len(all_rows)
         items = [_bitable_to_dict(b) for b in all_rows[offset: offset + limit]]
         return success_response({
@@ -122,14 +121,14 @@ async def create_bitable(
         except ValueError as ve:
             return error_response(code=400, message=str(ve))
 
-        # 去重 mp_ids
-        mp_ids = sorted({m.strip() for m in (req.mp_ids or []) if (m or "").strip()})
+        # 去重 feed_ids
+        feed_ids = sorted({m.strip() for m in (req.feed_ids or []) if (m or "").strip()})
         bitable = LarkBitable(
             id=str(uuid.uuid4()),
             name=req.name.strip(),
             app_token=req.app_token.strip(),
             table_id=req.table_id.strip(),
-            mp_ids=json.dumps(mp_ids, ensure_ascii=False),
+            feed_ids=json.dumps(feed_ids, ensure_ascii=False),
             field_mapping=json.dumps(normalized_mapping, ensure_ascii=False),
             enabled=bool(req.enabled),
         )
@@ -183,9 +182,9 @@ async def update_bitable(
             b.app_token = req.app_token.strip()
         if req.table_id is not None:
             b.table_id = req.table_id.strip()
-        if req.mp_ids is not None:
-            mp_ids = sorted({m.strip() for m in req.mp_ids if (m or "").strip()})
-            b.set_mp_ids(mp_ids)
+        if req.feed_ids is not None:
+            feed_ids = sorted({m.strip() for m in req.feed_ids if (m or "").strip()})
+            b.set_feed_ids(feed_ids)
         if req.field_mapping is not None:
             try:
                 normalized = validate_field_mapping(req.field_mapping)
@@ -290,9 +289,11 @@ async def manual_push(
     req: ManualPushRequest,
     current_user: dict = Depends(get_current_user_or_ak),
 ):
-    """绕过自动 hook,  把 article_id 强制推到指定 Bitable;  仍走 worker pool
+    """手动把 article 推到指定 Bitable;  仍走 worker pool 异步执行。
 
-    (异步执行,  返回任务标记 + 已存在的 article_lark_pushes 用于幂等检查)。
+    去重策略:  worker 内部按 ``LarkBitable.last_pushed_at`` 水印过滤
+    (详见 ``core/lark_push._push_article_job``),  本接口不做额外去重判断,
+    即使对同一 article 重复调也安全 —— 水印会保证后续 worker 跳过。
 
     支持两种入参:
       * ``article_id``:单条(旧前端兼容)
@@ -300,7 +301,6 @@ async def manual_push(
     批量模式下返回每条 article 的提交结果。
     """
     from core.models.article import Article as ArticleModel
-    from core.models.feed import Feed
     from core.lark_push import lark_maybe_push
 
     # 解析请求:article_ids 优先;缺失则回退到 article_id;都没有则报错
@@ -331,22 +331,13 @@ async def manual_push(
         if not b:
             return error_response(code=404, message="多维表配置不存在")
 
-        # 一次性查出所有目标文章 + 已推送记录,避免 N+1
+        # 一次性查出所有目标文章,  校验存在性
         articles = (
             session.query(ArticleModel)
             .filter(ArticleModel.id.in_(targets))
             .all()
         )
         found_map = {a.id: a for a in articles}
-        existing_pushes = (
-            session.query(ArticleLarkPush)
-            .filter(
-                ArticleLarkPush.article_id.in_(targets),
-                ArticleLarkPush.bitable_id == b.id,
-            )
-            .all()
-        )
-        pushed_map = {p.article_id: p for p in existing_pushes}
 
         results = []
         for aid in targets:
@@ -360,12 +351,9 @@ async def manual_push(
                 continue
             try:
                 lark_maybe_push(art.id)
-                existing = pushed_map.get(aid)
                 results.append({
                     "article_id": art.id,
                     "ok": True,
-                    "already_pushed": bool(existing),
-                    "previous_record_id": existing.record_id if existing else None,
                 })
             except Exception as e:  # noqa: BLE001
                 # lark_maybe_push 自身已捕获异常吞掉,这里只是兜底
@@ -384,16 +372,6 @@ async def manual_push(
             "results": results,
             # 兼容旧前端:单条模式下平铺顶层字段
             "article_id": targets[0] if len(targets) == 1 else None,
-            "already_pushed": (
-                results[0].get("already_pushed", False)
-                if len(targets) == 1 and results and results[0].get("ok")
-                else False
-            ),
-            "previous_record_id": (
-                results[0].get("previous_record_id")
-                if len(targets) == 1 and results and results[0].get("ok")
-                else None
-            ),
         }, f"已提交 {submitted_count}/{len(results)} 条到 worker (异步执行)")
     except Exception as e:
         return error_response(code=500, message=f"提交推送失败: {e}")
@@ -469,48 +447,3 @@ async def get_lark_status(
         "token_ok": token_ok,
         "issues": issues,
     })
-
-
-@router.get("/pushes", summary="查询推送历史")
-async def list_pushes(
-    article_id: Optional[str] = Query(None),
-    bitable_id: Optional[str] = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    current_user: dict = Depends(get_current_user_or_ak),
-):
-    session = DB.get_session()
-    try:
-        q = session.query(ArticleLarkPush)
-        if article_id:
-            q = q.filter(ArticleLarkPush.article_id == article_id)
-        if bitable_id:
-            q = q.filter(ArticleLarkPush.bitable_id == bitable_id)
-        total = q.count()
-        rows = (
-            q.order_by(ArticleLarkPush.pushed_at.desc())
-            .limit(limit)
-            .offset(offset)
-            .all()
-        )
-        items = [
-            {
-                "article_id": r.article_id,
-                "bitable_id": r.bitable_id,
-                "record_id": r.record_id,
-                "pushed_at": r.pushed_at,
-            }
-            for r in rows
-        ]
-        return success_response({
-            "list": items,
-            "total": total,
-            "page": {"limit": limit, "offset": offset},
-        })
-    except Exception as e:
-        return error_response(code=500, message=f"查询推送历史失败: {e}")
-    finally:
-        try:
-            session.close()
-        except Exception:
-            pass

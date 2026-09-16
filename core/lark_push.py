@@ -2,21 +2,24 @@
 
 入口点:
   * ``lark_maybe_push(article_id)`` — 提交异步任务到模块级 ``ThreadPoolExecutor``,
-    立刻返回,  不阻塞调用方 (Playwright/Redfox/RPA/refresh/add_article 4 处都调这个)。
+    立刻返回,  不阻塞调用方 (cron 周期任务 / 手动 ``POST /lark/bitables/{id}/push``
+    接口都调这个)。
 
 worker 内部:
   1. 开新 session
-  2. 读 article + Feed.mp_name
+  2. 读 article + Feed.name
   3. 全局 ``lark.enabled`` 为 False → 直接退出
-  4. 查关联 Bitables (``LarkBitable.enabled=True`` 且 ``mp_ids`` 含 ``article.mp_id``)
+  4. 查关联 Bitables (``LarkBitable.enabled=True`` 且 ``mp_ids`` 含 ``article.feed_id``)
   5. 对每个 Bitable:
-     *  检查 ``article_lark_pushes(article_id, bitable_id)`` 是否存在, 存在 → 跳过
-     *  不存在 → 构造 ``fields`` 字典, 调 ``batch_create``
-     *  成功后写 ``article_lark_pushes`` 并更新 ``last_pushed_at``
-     *  失败后更新 ``last_error`` / ``last_error_at`` 并 log
+     *  ``bitable.last_pushed_at`` 水印过滤:  跳过 ``article.publish_time <= last_pushed_at``
+        的旧文章(避免重推历史)
+     *  通过 → 构造 ``fields`` 字典, 调 ``batch_create``
+     *  成功后更新 ``bitable.last_pushed_at = max(原值, article.publish_time)``
+     *  失败后更新 ``last_error`` / ``last_error_at`` 并 log(不动水印,  下个周期会重试)
 
-幂等性靠 ``article_lark_pushes`` 复合主键 + 罕见的并发竞争时 SQLite/PostgreSQL
-INSERT 主键冲突由 IntegrityError 兜底捕获。
+幂等性靠 ``last_pushed_at`` 水印 + 按 ``publish_time`` 倒序处理;  并发 worker
+对同一 bitable 同时推进时,  后续 worker 看到的 ``last_pushed_at`` 已经反映了
+更早完成的 article,  自然跳过,  不会出现「同一篇推到两次」的情况。
 """
 from __future__ import annotations
 
@@ -29,14 +32,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy.exc import IntegrityError
-
 from core.config import cfg
 from core.db import DB
 from core.lark_client import LarkClient, LarkError, get_lark_client
 from core.models.article import Article
 from core.models.feed import Feed
-from core.models.lark_bitable import ALLOWED_FIELD_KEYS, ArticleLarkPush, LarkBitable
+from core.models.lark_bitable import ALLOWED_FIELD_KEYS, LarkBitable
 from core.print import print_warning, print_info
 
 # 模块级线程池: 4 worker 足够覆盖大多数场景, 不会把 token 刷新打爆。
@@ -104,12 +105,12 @@ def _resolve_field_value(article: Article, feed: Feed | None, key: str):
         except (TypeError, ValueError, OverflowError):
             return None
 
-    if key in {"mp_id", "mp_name"}:
-        if feed is None and key == "mp_name":
+    if key in {"feed_id", "name"}:
+        if feed is None and key == "name":
             return None
-        if key == "mp_name":
-            return getattr(feed, "mp_name", None)
-        return getattr(article, "mp_id", None)
+        if key == "name":
+            return getattr(feed, "name", None)
+        return getattr(article, "feed_id", None)
 
     return getattr(article, key, None)
 
@@ -138,7 +139,8 @@ def lark_maybe_push(article_id: str) -> None:
     调用方只负责传 article_id 进来,  不要传 session 或 ORM 对象
     (worker 自己开新 session, 避免调用方 session 已关闭问题)。
 
-    多次调用同一 article_id 安全:  worker 内部用复合主键 + IntegrityError 兜底。
+    多次调用同一 article_id 安全:  worker 内部按 ``last_pushed_at`` 水印
+    + 按 publish_time 倒序处理,  并发场景下不会重复推送。
     """
     if not cfg.get("lark.enabled", False):
         return
@@ -175,27 +177,27 @@ def _push_article_job(article_id: str) -> None:
             )
             return
 
-        mp_id = getattr(article, "mp_id", None)
-        if not mp_id:
-            print_info(f"[lark] skip: article {article_id} mp_id is empty")
+        feed_id = getattr(article, "feed_id", None)
+        if not feed_id:
+            print_info(f"[lark] skip: article {article_id} feed_id is empty")
             return
 
-        # 一次性查全部 enabled Bitables, 在 Python 里按 mp_ids 过滤
+        # 一次性查全部 enabled Bitables, 在 Python 里按 feed_ids 过滤
         bitables = (
             session.query(LarkBitable)
             .filter(LarkBitable.enabled == True)  # noqa: E712
             .all()
         )
-        matched = [b for b in bitables if mp_id in b.get_mp_ids()]
+        matched = [b for b in bitables if feed_id in b.get_feed_ids()]
         if not matched:
             print_info(
                 f"[lark] skip: no matched bitable for article={article_id} "
-                f"mp_id={mp_id} (enabled_bitables={len(bitables)})"
+                f"feed_id={feed_id} (enabled_bitables={len(bitables)})"
             )
             return
 
         feed = (
-            session.query(Feed).filter(Feed.id == mp_id).first() if mp_id else None
+            session.query(Feed).filter(Feed.id == feed_id).first() if feed_id else None
         )
 
         client = get_lark_client()
@@ -207,21 +209,24 @@ def _push_article_job(article_id: str) -> None:
             )
             return
 
-        # 已推送过的 (article_id, bitable_id) 集合, 减少 SQL 查询
-        existing_rows = (
-            session.query(ArticleLarkPush)
-            .filter(ArticleLarkPush.article_id == article_id)
-            .all()
+        # 单个 article 内部按 Bitable 的 last_pushed_at 升序处理:
+        # 先推「水印最低」的 bitable,  让所有 bitable 的水印尽量快速爬到
+        # 当前 article 的 publish_time,  避免一个 bitable 卡住水印。
+        publish_time = getattr(article, "publish_time", None) or 0
+        matched_sorted = sorted(
+            matched,
+            key=lambda b: (getattr(b, "last_pushed_at", None) or 0, b.id),
         )
-        pushed_bitable_ids = {row.bitable_id for row in existing_rows}
 
         print_info(
-            f"[lark] dispatch article={article_id} mp_id={mp_id} "
-            f"matched={len(matched)} already_pushed={len(pushed_bitable_ids)}"
+            f"[lark] dispatch article={article_id} feed_id={feed_id} "
+            f"matched={len(matched_sorted)} publish_time={publish_time}"
         )
 
-        for bitable in matched:
-            if bitable.id in pushed_bitable_ids:
+        for bitable in matched_sorted:
+            # 水印过滤:  last_pushed_at 已 >= 本 article 的 publish_time → 跳过
+            last_pushed = getattr(bitable, "last_pushed_at", None) or 0
+            if last_pushed and publish_time <= last_pushed:
                 continue
             try:
                 _push_one(article, feed, bitable, client, session)
@@ -244,7 +249,11 @@ def _push_one(
     client: LarkClient,
     session,
 ) -> None:
-    """单条 Bitable 推送;  失败抛异常由 ``_record_failure`` 收尾。"""
+    """单条 Bitable 推送;  失败抛异常由 ``_record_failure`` 收尾。
+
+    成功后把 ``bitable.last_pushed_at`` 抬到 ``max(原值, article.publish_time)``,
+    作为下次扫描的水印;  原 ``record_id`` 不再落库(没有 ArticleLarkPush 表)。
+    """
     mapping = bitable.get_field_mapping()
     if not mapping:
         print_warning(
@@ -264,33 +273,24 @@ def _push_one(
         table_id=bitable.table_id,
         records=[{"fields": fields}],
     )
+    # 飞书返回的 record_id 不再落库(ArticleLarkPush 已删除),  暂留 log 方便排查
     record_id = ""
     if created:
         record_id = str(created[0].get("record_id") or "")
 
-    # 写 article_lark_pushes; 复合主键防并发重复
-    row = ArticleLarkPush(
-        article_id=article.id,
-        bitable_id=bitable.id,
-        record_id=record_id,
-        pushed_at=int(time.time() * 1000),
-    )
-    try:
-        session.add(row)
-        session.flush()
-    except IntegrityError:
-        session.rollback()
-        # 并发分支已写入,  跳过
-        return
-
-    # 更新 bitable 状态
-    bitable.last_pushed_at = int(time.time() * 1000)
+    # 抬升水印:  max(原 last_pushed_at, article.publish_time)。
+    # publish_time 可能为 None / 0 (极少数异常数据),  此时退化为「当前时间」,
+    # 保证水印单调不减。
+    cur_last = getattr(bitable, "last_pushed_at", None) or 0
+    art_pt = getattr(article, "publish_time", None) or 0
+    new_watermark = max(cur_last, art_pt, int(time.time() * 1000))
+    bitable.last_pushed_at = new_watermark
     bitable.last_error = None
     bitable.last_error_at = None
     session.commit()
     print_info(
         f"[lark] push ok article={article.id} → bitable={bitable.id}({bitable.name}) "
-        f"record_id={record_id or '(none)'}"
+        f"record_id={record_id or '(none)'} watermark={new_watermark}"
     )
 
 

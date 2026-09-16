@@ -145,7 +145,7 @@ async def clean_orphan_articles(
         # 找出Articles表中mp_id不在Feeds表中的记录
         subquery = session.query(Feed.id).subquery()
         deleted_count = session.query(Article)\
-            .filter(~Article.mp_id.in_(subquery))\
+            .filter(~Article.feed_id.in_(subquery))\
             .delete(synchronize_session=False)
         
         session.commit()
@@ -208,7 +208,7 @@ async def clean_old_articles(
         
         # 如果指定了公众号ID，只删除该公众号的文章
         if mp_id:
-            query = query.filter(Article.mp_id == mp_id)
+            query = query.filter(Article.feed_id == mp_id)
         
         # 先获取总数
         total_count = query.count()
@@ -251,7 +251,7 @@ async def clean_old_articles(
                 preview.append({
                     "id": article.id,
                     "title": article.title,
-                    "mp_id": article.mp_id,
+                    "feed_id": article.feed_id,
                     "publish_time": article.publish_time,
                     "publish_date": publish_date
                 })
@@ -260,7 +260,7 @@ async def clean_old_articles(
                 preview.append({
                     "id": article.id,
                     "title": article.title,
-                    "mp_id": article.mp_id,
+                    "feed_id": article.feed_id,
                     "publish_time": article.publish_time,
                     "publish_date": None
                 })
@@ -302,7 +302,7 @@ async def clean_old_articles(
             "deleted_count": deleted_count,
             "cutoff_date": cutoff_date.strftime("%Y-%m-%d %H:%M:%S"),
             "days": days,
-            "mp_id": mp_id,
+            "feed_id": mp_id,
             "physical_delete": cfg.get("article.true_delete", False)
         })
     except Exception as e:
@@ -468,7 +468,7 @@ async def get_articles(
         else:
             query = query.filter(Article.status != DATA_STATUS.DELETED)
         if mp_id:
-            query = query.filter(Article.mp_id == mp_id)
+            query = query.filter(Article.feed_id == mp_id)
         if only_favorite:
             query = query.filter(Article.is_favorite == 1)
         # 支持 has_content 参数：true=有正文，false=无正文，None=不筛选
@@ -493,15 +493,15 @@ async def get_articles(
         from core.models.feed import Feed
         mp_names = {}
         for article in results:
-            if article.mp_id and article.mp_id not in mp_names:
-                feed = session.query(Feed).filter(Feed.id == article.mp_id).first()
-                mp_names[article.mp_id] = feed.mp_name if feed else "未知公众号"
+            if article.feed_id and article.feed_id not in mp_names:
+                feed = session.query(Feed).filter(Feed.id == article.feed_id).first()
+                mp_names[article.feed_id] = feed.name if feed else "未知公众号"
 
         # 合并公众号名称到文章列表
         article_list = []
         for article in results:
             article_dict = article.__dict__.copy()
-            article_dict["mp_name"] = mp_names.get(article.mp_id, "未知公众号")
+            article_dict["mp_name"] = mp_names.get(article.feed_id, "未知公众号")
             article_dict["is_favorite"] = int(getattr(article, "is_favorite", 0) or 0)
             article_dict["has_content"] = int(getattr(article, "has_content", 0) or 0)
             article_list.append(article_dict)
@@ -544,25 +544,25 @@ async def list_pending_content(
             ArticleBase.status != DATA_STATUS.DELETED,
         )
         if mp_id:
-            query = query.filter(ArticleBase.mp_id == mp_id)
+            query = query.filter(ArticleBase.feed_id == mp_id)
         query = query.order_by(ArticleBase.publish_time.desc()).limit(limit)
         results = query.all()
 
-        # 一次性查 Feed.mp_name，避免 N+1
+        # 一次性查 Feed.name，避免 N+1
         from core.models.feed import Feed
-        mp_ids = list({a.mp_id for a in results if a.mp_id})
+        mp_ids = list({a.feed_id for a in results if a.feed_id})
         mp_name_map = {}
         if mp_ids:
             feeds = session.query(Feed).filter(Feed.id.in_(mp_ids)).all()
-            mp_name_map = {f.id: f.mp_name for f in feeds}
+            mp_name_map = {f.id: f.name for f in feeds}
 
         items = [
             {
                 "id": a.id,
                 "title": a.title,
                 "url": a.url,
-                "mp_id": a.mp_id,
-                "mp_name": mp_name_map.get(a.mp_id, ""),
+                "feed_id": a.feed_id,
+                "name": mp_name_map.get(a.feed_id, ""),
                 "publish_time": a.publish_time,
             }
             for a in results
@@ -697,16 +697,6 @@ async def submit_article_content(
         clear_cache_pattern("article_detail")
         clear_cache_pattern("home_page")
         clear_cache_pattern("tag_detail")
-
-        # 回调: 异步推送到关联飞书多维表。session 即将让出,
-        # 内容非空且未被标记为 DELETED 时才推 (worker 内部也会再次检查)。
-        if article.status != DATA_STATUS.DELETED and (article.content or "").strip():
-            try:
-                from core.lark_push import lark_maybe_push
-
-                lark_maybe_push(article.id)
-            except Exception as exc:  # noqa: BLE001
-                print_warning(f"submit lark push hook failed: {exc}")
 
         return success_response({
             "article_id": article.id,
@@ -890,7 +880,7 @@ def get_next_article(
         next_article = session.query(Article)\
             .filter(Article.publish_time > current_article.publish_time)\
             .filter(Article.status != DATA_STATUS.DELETED)\
-            .filter(Article.mp_id == current_article.mp_id)\
+            .filter(Article.feed_id == current_article.feed_id)\
             .order_by(Article.publish_time.asc())\
             .first()
         
@@ -948,7 +938,7 @@ def get_prev_article(
         prev_article = session.query(Article)\
             .filter(Article.publish_time < current_article.publish_time)\
             .filter(Article.status != DATA_STATUS.DELETED)\
-            .filter(Article.mp_id == current_article.mp_id)\
+            .filter(Article.feed_id == current_article.feed_id)\
             .order_by(Article.publish_time.desc())\
             .first()
         

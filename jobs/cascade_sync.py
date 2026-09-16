@@ -81,9 +81,9 @@ class CascadeSyncService:
                     
                     if existing_feed:
                         # 更新现有记录
-                        existing_feed.mp_name = feed_data["mp_name"]
-                        existing_feed.mp_cover = feed_data["mp_cover"]
-                        existing_feed.mp_intro = feed_data["mp_intro"]
+                        existing_feed.name = feed_data["mp_name"]
+                        existing_feed.cover = feed_data["mp_cover"]
+                        existing_feed.intro = feed_data["mp_intro"]
                         existing_feed.faker_id = feed_data.get("faker_id")
                         existing_feed.updated_at = datetime.utcnow()
                     else:
@@ -91,9 +91,9 @@ class CascadeSyncService:
                         new_feed = Feed(
                             id=feed_data["id"],
                             faker_id=feed_data.get("faker_id"),
-                            mp_name=feed_data["mp_name"],
-                            mp_cover=feed_data["mp_cover"],
-                            mp_intro=feed_data["mp_intro"],
+                            name=feed_data["mp_name"],
+                            cover=feed_data["mp_cover"],
+                            intro=feed_data["mp_intro"],
                             status=feed_data["status"],
                             created_at=datetime.utcnow(),
                             updated_at=datetime.utcnow()
@@ -359,7 +359,7 @@ class CascadeSyncService:
                     print_error(f"公众号不存在: {feed_id}")
                     results.append({
                         "feed_id": feed_id,
-                        "mp_name": feed_name,
+                        "name": feed_name,
                         "success": False,
                         "article_count": 0,
                         "new_article_count": 0,
@@ -388,7 +388,7 @@ class CascadeSyncService:
                 
                 results.append({
                     "feed_id": feed_id,
-                    "mp_name": feed_name,
+                    "name": feed_name,
                     "success": result_container["success"],
                     "article_count": result_container["article_count"],
                     "new_article_count": result_container["new_article_count"],
@@ -404,7 +404,7 @@ class CascadeSyncService:
                 print_error(f"处理公众号 {feed_data.get('mp_name')} 失败: {str(e)}")
                 results.append({
                     "feed_id": feed_data.get("id"),
-                    "mp_name": feed_data.get("mp_name"),
+                    "name": feed_data.get("mp_name"),
                     "success": False,
                     "article_count": 0,
                     "new_article_count": 0,

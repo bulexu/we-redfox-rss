@@ -18,7 +18,7 @@ def fetch_all_article():
         mps=db.DB.get_all_mps()
         for item in mps:
             try:
-                wx.get_Articles(item.faker_id,CallBack=UpdateArticle,Mps_id=item.id,Mps_title=item.mp_name, MaxPage=1)
+                wx.get_Articles(item.faker_id,CallBack=UpdateArticle,Mps_id=item.id,Mps_title=item.name, MaxPage=1)
             except Exception as e:
                 print(e)
         print(wx.articles) 
@@ -38,7 +38,7 @@ interval=int(cfg.get("interval",60)) # 兼容历史配置;get_Articles 已不再
 def do_job(mp=None,task:MessageTask=None,isTest=False):
         """执行单个公众号的采集任务"""
         # TaskQueue.add_task(test,info=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        # print("执行任务", task.mps_id)
+        # print("执行任务", task.target_feed_ids)
         print(f"执行任务 (测试模式: {isTest})")
         
         # 初始化变量，确保在所有分支中都有定义
@@ -53,7 +53,7 @@ def do_job(mp=None,task:MessageTask=None,isTest=False):
                 # 测试模式使用模拟数据
                 mock_articles = [{
                     "id": "test-article-001",
-                    "mp_id": mp.id,
+                    "id": mp.id,
                     "title": "测试文章标题",
                     "pic_url": "https://via.placeholder.com/300x200",
                     "url": "https://example.com/test-article",
@@ -66,10 +66,10 @@ def do_job(mp=None,task:MessageTask=None,isTest=False):
             else:
                 wx=WxGather().Model()
                 try:
-                    wx.get_Articles(mp.faker_id,CallBack=UpdateArticle,Mps_id=mp.id,Mps_title=mp.mp_name, MaxPage=1,Over_CallBack=Update_Over)
+                    wx.get_Articles(mp.faker_id,CallBack=UpdateArticle,Mps_id=mp.id,Mps_title=mp.name, MaxPage=1,Over_CallBack=Update_Over)
                     success = True
                 except Exception as e:
-                    print_error(f"获取文章失败 [{mp.mp_name}]: {e}")
+                    print_error(f"获取文章失败 [{mp.name}]: {e}")
                     error_msg = str(e)
                     # 不抛出异常，继续执行后续流程
                 finally:
@@ -82,7 +82,7 @@ def do_job(mp=None,task:MessageTask=None,isTest=False):
                 from jobs.webhook import MessageWebHook
                 tms=MessageWebHook(task=task,feed=mp,articles=mock_articles)
                 web_hook(tms, is_test=isTest)
-                print_success(f"任务({task.id})[{mp.mp_name}]执行成功,{count}成功条数")
+                print_success(f"任务({task.id})[{mp.name}]执行成功,{count}成功条数")
                 
                 # 采集成功，清除该公众号的环境异常记录
                 if not isTest and success and count > 0:
@@ -92,7 +92,7 @@ def do_job(mp=None,task:MessageTask=None,isTest=False):
                         print_error(f"清除环境异常记录失败: {e}")
                         
             except Exception as e:
-                print_error(f"Webhook执行失败 [{mp.mp_name}]: {e}")
+                print_error(f"Webhook执行失败 [{mp.name}]: {e}")
                 if not error_msg:
                     error_msg = f"Webhook: {str(e)}"
             
@@ -102,8 +102,8 @@ def do_job(mp=None,task:MessageTask=None,isTest=False):
             if not isTest and mock_articles:
                 try:
                     result_data = [{
-                        "mp_id": mp.id,
-                        "mp_name": mp.mp_name,
+                        "id": mp.id,
+                        "name": mp.name,
                         "article_count": len(mock_articles) if not isTest else 1,
                         "success_count": count if not isTest else 1,
                         "timestamp": datetime.now().isoformat()
@@ -115,7 +115,7 @@ def do_job(mp=None,task:MessageTask=None,isTest=False):
                     
         except Exception as e:
             error_msg = str(e)
-            print_error(f"任务执行异常 [{mp.mp_name}]: {e}")
+            print_error(f"任务执行异常 [{mp.name}]: {e}")
             raise  # 重新抛出，让队列的重试机制处理
         
         finally:
@@ -126,7 +126,7 @@ def do_job(mp=None,task:MessageTask=None,isTest=False):
             if task and not isTest:
                 tracker.record_mp_result(
                     task_id=task.id,
-                    mp_name=mp.mp_name,
+                    name=mp.name,
                     success=success,
                     article_count=count,
                     error=error_msg
@@ -272,12 +272,12 @@ def _run_batch(feeds, task, isTest, max_workers):
         ``do_job`` 通常不抛异常(fetcher 错误已在内部捕获);万一真抛出来,
         这里兜底标 failed 后再 rethrow,让外层 :func:`_run_batch` 记录。
         """
-        TaskQueue.add_subtask(feed.mp_name)
+        TaskQueue.add_subtask(feed.name)
         try:
             do_job(feed, task, isTest)
         except Exception as unhandled_exc:  # noqa: BLE001
             TaskQueue.mark_subtask_completed(
-                feed.mp_name,
+                feed.name,
                 success=False,
                 error=f"unhandled: {unhandled_exc}",
             )
@@ -298,7 +298,7 @@ def _run_batch(feeds, task, isTest, max_workers):
                     fut.result()
                 except Exception as exc:  # noqa: BLE001
                     print_error(
-                        f"并发采集未捕获异常 [{feed.mp_name}]: {exc}"
+                        f"并发采集未捕获异常 [{feed.name}]: {exc}"
                     )
     finally:
         # 整个 batch 结束后,无论是否中途异常,确保子任务列表清空。
@@ -345,7 +345,7 @@ def add_job(feeds: list[Feed] = None, task: MessageTask = None, isTest=False):
     print_success(TaskQueue.get_queue_info())
 import json
 def get_feeds(task:MessageTask=None):
-     mps = json.loads(task.mps_id)
+     mps = json.loads(task.target_feed_ids)
      ids=",".join([item["id"]for item in mps])
      mps=wx_db.get_mps_list(ids)
      if len(mps)==0:

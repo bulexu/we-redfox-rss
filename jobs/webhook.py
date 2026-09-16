@@ -29,7 +29,7 @@ def send_message(hook: MessageWebHook) -> str:
         str: 格式化后的消息内容
     """
     template = hook.task.message_template if hook.task.message_template else """
-### {{feed.mp_name}} 订阅消息：
+### {{feed.name}} 订阅消息：
 {% if articles %}
 {% for article in articles %}
 - [**{{ article.title }}**]({{article.url}}) ({{ article.publish_time }})\n
@@ -72,14 +72,14 @@ def call_webhook(hook: MessageWebHook, is_test: bool = False) -> str:
     template = hook.task.message_template if hook.task.message_template else """{
   "feed": {
     "id": "{{ feed.id }}",
-    "name": "{{ feed.mp_name }}"
+    "name": "{{ feed.name }}"
   },
   "articles": [
     {% if articles %}
      {% for article in articles %}
         {
           "id": "{{ article.id }}",
-          "mp_id": "{{ article.mp_id }}",
+          "feed_id": "{{ article.feed_id }}",
           "title": "{{ article.title }}",
           "pic_url": "{{ article.pic_url }}",
           "url": "{{ article.url }}",
@@ -110,7 +110,7 @@ def call_webhook(hook: MessageWebHook, is_test: bool = False) -> str:
         logger.info("使用模拟数据测试webhook")
         mock_article = {
             "id": "test-article-001",
-            "mp_id": hook.feed.id if hook.feed else "test-mp-id",
+            "feed_id": hook.feed.id if hook.feed else "test-mp-id",
             "title": "测试文章标题",
             "pic_url": "https://via.placeholder.com/300x200",
             "url": "https://example.com/test-article",

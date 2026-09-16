@@ -54,19 +54,6 @@ export interface TestBitableResp {
   fields?: LarkFieldInfo[]
 }
 
-export interface LarkPushRecord {
-  article_id: string
-  bitable_id: string
-  record_id: string | null
-  pushed_at: number
-}
-
-export interface LarkPushListResp {
-  list: LarkPushRecord[]
-  total: number
-  page: { limit: number; offset: number }
-}
-
 export const listBitables = (params?: { enabled?: boolean; mp_id?: string; limit?: number; offset?: number }) => {
   return http.get<LarkBitableListResp>('/wx/lark/bitables', { params })
 }
@@ -129,8 +116,4 @@ export const manualPush = (id: string, article_ids: string[]) => {
   return http.post<ManualPushResp>(`/wx/lark/bitables/${id}/push`, {
     article_ids,
   })
-}
-
-export const listPushes = (params?: { article_id?: string; bitable_id?: string; limit?: number; offset?: number }) => {
-  return http.get<LarkPushListResp>('/wx/lark/pushes', { params })
 }

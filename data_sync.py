@@ -189,6 +189,59 @@ class DatabaseSynchronizer:
         except Exception as e:
             self.logger.warning(f"迁移 {table_name} 表时出错: {e}")
     
+    def _drop_article_lark_pushes_table(self):
+        """迁移:  删除 ``article_lark_pushes`` 表 + 重置 ``lark_bitables.last_pushed_at``。
+
+        2024 重构:  推送去重从「逐条记录」改为 ``LarkBitable.last_pushed_at``
+        publish_time 水印,  ``article_lark_pushes`` 表已无用处。
+
+        行为:
+          1. 如果 ``article_lark_pushes`` 表存在,  DROP 掉;
+          2. 把所有 ``lark_bitables.last_pushed_at`` 重置为 NULL,
+             让升级后第一次扫描 = 「last_pushed_at 为空 → 推送全部」,
+             符合新规格;  老 ``last_pushed_at`` 是 ``time.time()*1000``(当前时间
+             毫秒),  远大于任何历史文章 publish_time,  会导致升级后一次都推不出去。
+
+        幂等:  多次调用安全(先 has_table 判断,  再 UPDATE 用 IS NOT NULL 条件)。
+        """
+        from sqlalchemy import text
+        push_table = "article_lark_pushes"
+        bitable_table = "lark_bitables"
+        try:
+            inspector = inspect(self.engine)
+            if not inspector.has_table(push_table):
+                self.logger.info(f"{push_table} 表不存在,  无需删除")
+            else:
+                self.logger.info(f"开始迁移:  删除 {push_table} 表...")
+                with self.engine.begin() as conn:
+                    conn.execute(text(f"DROP TABLE IF EXISTS {push_table}"))
+                self.logger.info(f"已删除 {push_table} 表")
+
+            # 顺手把 last_pushed_at 重置为 NULL
+            if inspector.has_table(bitable_table):
+                # 确认 last_pushed_at 列存在再 UPDATE
+                columns = {c["name"] for c in inspector.get_columns(bitable_table)}
+                if "last_pushed_at" in columns:
+                    with self.engine.begin() as conn:
+                        result = conn.execute(
+                            text(
+                                f"UPDATE {bitable_table} "
+                                f"SET last_pushed_at = NULL "
+                                f"WHERE last_pushed_at IS NOT NULL"
+                            )
+                        )
+                        self.logger.info(
+                            f"重置 {bitable_table}.last_pushed_at: {result.rowcount} 行"
+                        )
+                else:
+                    self.logger.info(
+                        f"{bitable_table} 没有 last_pushed_at 列,  跳过重置"
+                    )
+            else:
+                self.logger.info(f"{bitable_table} 表不存在,  跳过重置 last_pushed_at")
+        except Exception as e:
+            self.logger.warning(f"迁移 article_lark_pushes 时出错(已忽略):  {e}")
+
     def _migrate_articles_updated_at_millis(self):
         """
         迁移 articles 表：将 updated_at_millis 从 INT 改为 BIGINT
@@ -231,6 +284,257 @@ class DatabaseSynchronizer:
             
         except Exception as e:
             self.logger.warning(f"迁移 {table_name}.updated_at_millis 时出错: {e}")
+
+    def _migrate_feed_id_rename(self):
+        """2024 重构: 多平台订阅统一 ``feed_id`` 命名。
+
+        行为:
+          1. ``articles.mp_id``         → ``articles.feed_id``
+          2. ``message_tasks.mps_id``   → ``message_tasks.target_feed_ids``
+          3. ``message_tasks`` 添加 ``platform VARCHAR(20) DEFAULT 'wechat'``,
+             历史行回填 ``'wechat'``。
+
+        SQLite < 3.25 不支持 ``ALTER TABLE ... RENAME COLUMN``,  走
+        ``_sqlite_rebuild_table_with_rename`` 重建表方案。
+
+        幂等:  多次调用安全 (用 has_column 判断,  RENAME 时检查源列在且目标列不在)。
+        """
+        from sqlalchemy import text
+
+        inspector = inspect(self.engine)
+        is_sqlite = "sqlite" in self.db_url
+
+        def _has_column(table, col):
+            return inspector.has_table(table) and col in {
+                c["name"] for c in inspector.get_columns(table)
+            }
+
+        # 1. articles.mp_id → feed_id
+        if _has_column("articles", "mp_id") and not _has_column("articles", "feed_id"):
+            self.logger.info("迁移 articles.mp_id → feed_id")
+            try:
+                with self.engine.begin() as conn:
+                    if is_sqlite:
+                        try:
+                            conn.execute(text(
+                                "ALTER TABLE articles RENAME COLUMN mp_id TO feed_id"
+                            ))
+                        except SQLAlchemyError:
+                            self._sqlite_rebuild_table_with_rename(
+                                "articles", "mp_id", "feed_id",
+                            )
+                    else:
+                        conn.execute(text(
+                            "ALTER TABLE articles RENAME COLUMN mp_id TO feed_id"
+                        ))
+                self.logger.info("articles.mp_id → feed_id 完成")
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning(f"迁移 articles.mp_id 时出错: {exc}")
+
+        # 2. message_tasks.mps_id → target_feed_ids
+        if _has_column("message_tasks", "mps_id") and not _has_column(
+            "message_tasks", "target_feed_ids"
+        ):
+            self.logger.info("迁移 message_tasks.mps_id → target_feed_ids")
+            try:
+                with self.engine.begin() as conn:
+                    if is_sqlite:
+                        try:
+                            conn.execute(text(
+                                "ALTER TABLE message_tasks RENAME COLUMN mps_id TO target_feed_ids"
+                            ))
+                        except SQLAlchemyError:
+                            self._sqlite_rebuild_table_with_rename(
+                                "message_tasks", "mps_id", "target_feed_ids",
+                            )
+                    else:
+                        conn.execute(text(
+                            "ALTER TABLE message_tasks RENAME COLUMN mps_id TO target_feed_ids"
+                        ))
+                self.logger.info("message_tasks.mps_id → target_feed_ids 完成")
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning(f"迁移 message_tasks.mps_id 时出错: {exc}")
+
+        # 3. message_tasks.platform (DEFAULT 'wechat',  历史行回填)
+        if _has_column("message_tasks", "id") and not _has_column(
+            "message_tasks", "platform"
+        ):
+            self.logger.info("添加 message_tasks.platform 列")
+            try:
+                with self.engine.begin() as conn:
+                    if is_sqlite:
+                        conn.execute(text(
+                            "ALTER TABLE message_tasks ADD COLUMN platform VARCHAR(20) DEFAULT 'wechat'"
+                        ))
+                    elif "postgresql" in self.db_url or "postgres" in self.db_url:
+                        conn.execute(text(
+                            'ALTER TABLE "message_tasks" ADD COLUMN "platform" VARCHAR(20) DEFAULT \'wechat\''
+                        ))
+                    else:
+                        conn.execute(text(
+                            "ALTER TABLE message_tasks ADD COLUMN platform VARCHAR(20) DEFAULT 'wechat'"
+                        ))
+                # 回填历史 NULL 行
+                with self.engine.begin() as conn:
+                    conn.execute(text(
+                        "UPDATE message_tasks SET platform = 'wechat' WHERE platform IS NULL"
+                    ))
+                self.logger.info("message_tasks.platform 列添加完成")
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning(f"添加 message_tasks.platform 列时出错: {exc}")
+
+        # 4. lark_bitables.mp_ids → feed_ids (改名)
+        if _has_column("lark_bitables", "mp_ids") and not _has_column(
+            "lark_bitables", "feed_ids"
+        ):
+            self.logger.info("迁移 lark_bitables.mp_ids → feed_ids")
+            try:
+                with self.engine.begin() as conn:
+                    if is_sqlite:
+                        try:
+                            conn.execute(text(
+                                "ALTER TABLE lark_bitables RENAME COLUMN mp_ids TO feed_ids"
+                            ))
+                        except SQLAlchemyError:
+                            self._sqlite_rebuild_table_with_rename(
+                                "lark_bitables", "mp_ids", "feed_ids",
+                            )
+                    else:
+                        conn.execute(text(
+                            "ALTER TABLE lark_bitables RENAME COLUMN mp_ids TO feed_ids"
+                        ))
+                self.logger.info("lark_bitables.mp_ids → feed_ids 完成")
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning(f"迁移 lark_bitables.mp_ids 时出错: {exc}")
+
+        # 5. tags.mps_id → feed_ids (改名)
+        if _has_column("tags", "mps_id") and not _has_column("tags", "feed_ids"):
+            self.logger.info("迁移 tags.mps_id → feed_ids")
+            try:
+                with self.engine.begin() as conn:
+                    if is_sqlite:
+                        try:
+                            conn.execute(text(
+                                "ALTER TABLE tags RENAME COLUMN mps_id TO feed_ids"
+                            ))
+                        except SQLAlchemyError:
+                            self._sqlite_rebuild_table_with_rename(
+                                "tags", "mps_id", "feed_ids",
+                            )
+                    else:
+                        conn.execute(text(
+                            "ALTER TABLE tags RENAME COLUMN mps_id TO feed_ids"
+                        ))
+                self.logger.info("tags.mps_id → feed_ids 完成")
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning(f"迁移 tags.mps_id 时出错: {exc}")
+
+        # 6. filter_rules.mp_id → feed_id (改名)
+        if _has_column("filter_rules", "mp_id") and not _has_column(
+            "filter_rules", "feed_id"
+        ):
+            self.logger.info("迁移 filter_rules.mp_id → feed_id")
+            try:
+                with self.engine.begin() as conn:
+                    if is_sqlite:
+                        try:
+                            conn.execute(text(
+                                "ALTER TABLE filter_rules RENAME COLUMN mp_id TO feed_id"
+                            ))
+                        except SQLAlchemyError:
+                            self._sqlite_rebuild_table_with_rename(
+                                "filter_rules", "mp_id", "feed_id",
+                            )
+                    else:
+                        conn.execute(text(
+                            "ALTER TABLE filter_rules RENAME COLUMN mp_id TO feed_id"
+                        ))
+                self.logger.info("filter_rules.mp_id → feed_id 完成")
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning(f"迁移 filter_rules.mp_id 时出错: {exc}")
+
+        # 7. feeds.mp_name → name, mp_cover → cover, mp_intro → intro (改名)
+        for old_col, new_col in [
+            ("mp_name", "name"),
+            ("mp_cover", "cover"),
+            ("mp_intro", "intro"),
+        ]:
+            if _has_column("feeds", old_col) and not _has_column("feeds", new_col):
+                self.logger.info(f"迁移 feeds.{old_col} → {new_col}")
+                try:
+                    with self.engine.begin() as conn:
+                        if is_sqlite:
+                            try:
+                                conn.execute(text(
+                                    f"ALTER TABLE feeds RENAME COLUMN {old_col} TO {new_col}"
+                                ))
+                            except SQLAlchemyError:
+                                self._sqlite_rebuild_table_with_rename(
+                                    "feeds", old_col, new_col,
+                                )
+                        else:
+                            conn.execute(text(
+                                f"ALTER TABLE feeds RENAME COLUMN {old_col} TO {new_col}"
+                            ))
+                    self.logger.info(f"feeds.{old_col} → {new_col} 完成")
+                except Exception as exc:  # noqa: BLE001
+                    self.logger.warning(f"迁移 feeds.{old_col} 时出错: {exc}")
+
+    def _sqlite_rebuild_table_with_rename(self, table_name: str, old_col: str, new_col: str):
+        """SQLite 旧版本重建表并重命名列。
+
+        通用方案:  CREATE 新表 → 复制数据 → DROP 旧表 → RENAME 新表 → 重建索引。
+        列定义从 SQLAlchemy model 反射读取。
+        """
+        from sqlalchemy import text
+
+        if "sqlite" not in self.db_url:
+            raise RuntimeError("仅 SQLite 需要重建表")
+
+        model = self.models.get(table_name)
+        if model is None:
+            # fallback: 通过 metadata 反射
+            model = next(
+                (m for m in self.models.values() if m.__tablename__ == table_name),
+                None,
+            )
+        if model is None:
+            raise RuntimeError(f"找不到表 {table_name} 对应的 SQLAlchemy model")
+
+        # 构造 CREATE TABLE 语句
+        col_defs = []
+        for col in model.__table__.columns:
+            name = col.name
+            # 旧列名替换成新列名
+            type_str = str(col.type)
+            nullable = "" if col.nullable else " NOT NULL"
+            default = ""
+            if col.default is not None and hasattr(col.default, "arg"):
+                arg = col.default.arg
+                if isinstance(arg, (int, float)):
+                    default = f" DEFAULT {arg}"
+                elif isinstance(arg, str):
+                    default = f" DEFAULT '{arg}'"
+            pk = " PRIMARY KEY" if col.primary_key else ""
+            col_defs.append(f'"{name}" {type_str}{nullable}{default}{pk}')
+
+        create_sql = f'CREATE TABLE {table_name}_new ({", ".join(col_defs)})'
+
+        # 列出所有列(以旧列名作为源), 在 SELECT 时做 rename
+        all_cols = [c.name for c in model.__table__.columns]
+        col_list = ", ".join(f'"{c}"' for c in all_cols)
+        insert_sql = f'INSERT INTO {table_name}_new ({col_list}) SELECT {col_list} FROM {table_name}'
+
+        with self.engine.begin() as conn:
+            conn.execute(text(create_sql))
+            conn.execute(text(insert_sql))
+            conn.execute(text(f"DROP TABLE {table_name}"))
+            conn.execute(text(f"ALTER TABLE {table_name}_new RENAME TO {table_name}"))
+            # 重建索引(从 model 反射)
+            for idx in model.__table__.indexes:
+                cols = ", ".join(f'"{c.name}"' for c in idx.columns)
+                idx_name = idx.name or f"ix_{table_name}_{'_'.join(c.name for c in idx.columns)}"
+                conn.execute(text(f'CREATE INDEX IF NOT EXISTS "{idx_name}" ON {table_name} ({cols})'))
     
     def sync(self):
         """同步模型到数据库"""
@@ -249,9 +553,15 @@ class DatabaseSynchronizer:
             # SQLite 特殊迁移：修改 node_id 为 nullable
             if "sqlite" in self.db_url:
                 self._migrate_cascade_task_allocations()
-            
+
             # MySQL/PostgreSQL 迁移：修改 updated_at_millis 为 BIGINT
             self._migrate_articles_updated_at_millis()
+
+            # 2024 重构:  删除已废弃的 article_lark_pushes 表,  重置 last_pushed_at
+            self._drop_article_lark_pushes_table()
+
+            # 2024 重构:  Article.mp_id → Article.feed_id + MessageTask.mps_id → MessageTask.target_feed_ids + MessageTask.platform 列
+            self._migrate_feed_id_rename()
             
             # 处理不同数据库的特殊类型映射
             for model in self.models.values():

@@ -130,7 +130,7 @@ async def test_message_task(
         for i in range(1, 10):
             mock_articles.append( {
             "id": f"test-article-00{i}",
-            "mp_id": feed.id,
+            "id": feed.id,
             "title": f"测试文章标题{i}",
             "pic_url": "https://via.placeholder.com/300x200",
             "url": f"https://example.com/test-article-{i}",
@@ -153,11 +153,11 @@ async def test_message_task(
         return success_response(
             data={
                 "task_id": task_id,
-                "feed_name": feed.mp_name,
+                "feed_name": feed.name,
                 "test_article": mock_articles[0],
                 "result": result
             },
-            message=f"测试消息已发送到 {feed.mp_name}"
+            message=f"测试消息已发送到 {feed.name}"
         )
     except HTTPException:
         raise

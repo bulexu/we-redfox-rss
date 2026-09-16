@@ -7,7 +7,7 @@ class FilterRule(Base):
     __tablename__ = 'filter_rules'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    mp_id = Column(String(255), nullable=False, index=True, comment='公众号ID')
+    feed_id = Column(String(255), nullable=False, index=True, comment='订阅源ID (公众号/小红书)')
     rule_name = Column(String(255), nullable=False, comment='规则名称')
     
     # 过滤规则配置

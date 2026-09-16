@@ -31,7 +31,7 @@ def clean_duplicate_articles():
         
         # 检查重复文章
         for article in articles:
-            article_key = (article.title, article.mp_id)
+            article_key = (article.title, article.feed_id)
             if article_key in seen_articles:
                 duplicates.append(article)
             else:

@@ -153,7 +153,7 @@ class Db:
         try:
             art = Article(**article_data)
             if art.id: # type: ignore
-               art.id=f"{str(art.mp_id)}-{art.id}".replace("MP_WXS_","") # type: ignore
+               art.id=f"{str(art.feed_id)}-{art.id}".replace("MP_WXS_","") # type: ignore
             session=DB.get_session()
             article = session.query(Article).filter(Article.id == art.id).first()
             if article is not None:
@@ -171,7 +171,7 @@ class Db:
             from datetime import datetime
             art = Article(**article_data)
             if art.id: # type: ignore
-               art.id=f"{str(art.mp_id)}-{art.id}".replace("MP_WXS_","") # type: ignore
+               art.id=f"{str(art.feed_id)}-{art.id}".replace("MP_WXS_","") # type: ignore
             if check_exist:
                 # 三道去重 (任一命中视为同一篇):
                 #   1. 主键 id 相等       —— 老 workUuid 命中
@@ -192,7 +192,7 @@ class Db:
                     # 99%+ 的真实 mp URL 都是 mid=&idx=&sn= 的格式,这里暂不覆盖。
                     dedup_filters.append(
                         and_(
-                            Article.mp_id == art.mp_id,
+                            Article.feed_id == art.feed_id,
                             Article.url.like(f"%&mid={mid}&%"),
                         )
                     )
@@ -252,16 +252,7 @@ class Db:
 
             session.add(art)
             print_info(f"Added article: {art.id}")
-            sta=session.commit()
-            # 回调: 异步推送到关联飞书多维表。
-            # 仅在「首次入库且带正文」时推,避免重复推送 (merge 去重路径不推)。
-            if (art.content or "").strip() and getattr(art, "status", None) != DATA_STATUS.DELETED:
-                try:
-                    from core.lark_push import lark_maybe_push
-
-                    lark_maybe_push(art.id)
-                except Exception as hook_exc:  # noqa: BLE001
-                    print_warning(f"add_article lark push hook failed: {hook_exc}")
+            session.commit()
         except Exception as e:
             session.rollback()  # 回滚事务，确保session状态正常
             if "UNIQUE" in str(e) or "Duplicate entry" in str(e):

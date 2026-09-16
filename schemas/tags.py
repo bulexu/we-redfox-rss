@@ -6,7 +6,7 @@ class TagsBase(BaseModel):
     name: str
     cover: Optional[str] = None
     intro: Optional[str] = None
-    mps_id: str
+    feed_ids: str
     status: int = 1
 
 class TagsCreate(TagsBase):

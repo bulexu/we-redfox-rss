@@ -1,25 +1,26 @@
 <template>
-  <a-watermark :content="appTitle" 
+  <a-watermark :content="appTitle"
   :alpha="0.1"
-  :rotate="-22" 
-  :anti-tamper="true" 
+  :rotate="-22"
+  :anti-tamper="true"
    >
-    <a-layout id="main">
-      <Navbar />
-      <a-layout >
-        <a-layout-content >
-          <router-view />
-        </a-layout-content>
-      </a-layout>
+    <!-- 一级入口(平台选择 / 系统管理) 已在 App.vue header 渲染;
+         此处只承载 main 区域:  二级菜单 + 页面内容 -->
+    <a-layout>
+      <SubNav />
+      <a-layout-content>
+        <router-view />
+      </a-layout-content>
     </a-layout>
   </a-watermark>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, provide } from 'vue'
-import Navbar from './Navbar.vue'
+import { computed } from 'vue'
+import SubNav from './SubNav.vue'
+
 const appTitle = computed(() => {
-  const ip = window.location.hostname;
-  return `${import.meta.env.VITE_APP_COPYRIGHT || 'Power By Rachel Design'}@${ip}`;
+  const ip = window.location.hostname
+  return `${import.meta.env.VITE_APP_COPYRIGHT || 'Power By Rachel Design'}@${ip}`
 })
 </script>

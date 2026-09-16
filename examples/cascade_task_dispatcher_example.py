@@ -75,7 +75,7 @@ def example_parent_dispatch():
             node_status = dispatcher.node_statuses[node_id]
             print(f"   - {node_status.node_name}: {len(feeds)} 个公众号")
             for feed in feeds:
-                print(f"     * {feed.mp_name}")
+                print(f"     * {feed.name}")
         
         print(f"\n5. 查看分配记录:")
         for alloc_id, allocation in dispatcher.allocations.items():

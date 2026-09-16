@@ -34,15 +34,15 @@ def get_mps_view(
             
             # 统计该公众号的文章数量
             article_count = session.query(Article).filter(
-                Article.mp_id == mp_id,
+                Article.feed_id == mp_id,
                 Article.status == 1
             ).count()
             
             feed_data = {
                 "id": feed.id,
-                "name": feed.mp_name,
-                "cover": Web.get_image_url(feed.mp_cover) if feed.mp_cover else "",
-                "intro": feed.mp_intro,
+                "name": feed.name,
+                "cover": Web.get_image_url(feed.cover) if feed.cover else "",
+                "intro": feed.intro,
                 "mp_count": 1,  # Feed 本身就是一个公众号
                 "article_count": article_count,
                 "sync_time": datetime.fromtimestamp(feed.sync_time).strftime('%Y-%m-%d %H:%M') if feed.sync_time else "未同步",
@@ -114,7 +114,7 @@ def get_tags_view(
             article_count = 0
             if mps_ids:
                 article_count = session.query(Article).filter(
-                    Article.mp_id.in_(mps_ids),
+                    Article.feed_id.in_(mps_ids),
                     Article.status == 1
                 ).count()
             

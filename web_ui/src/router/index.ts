@@ -50,9 +50,10 @@ const routes = [
         path: 'wechat/mp',
         name: 'WeChatMpManagement',
         component: WeChatMpManagement,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage'] 
+          // 统一为 feed:manage — 跨平台共用 (公众号/小红书), 不再按平台拆。
+          permissions: ['feed:manage']
         }
       },
       
@@ -200,7 +201,7 @@ const routes = [
         component: FilterRuleList,
         meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage']
+          permissions: ['filter_rule:view']
         }
       },
       {
@@ -209,7 +210,7 @@ const routes = [
         component: FilterRuleForm,
         meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage']
+          permissions: ['filter_rule:edit']
         }
       },
       {
@@ -219,7 +220,7 @@ const routes = [
         props: true,
         meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage']
+          permissions: ['filter_rule:edit']
         }
       },
       {
@@ -237,7 +238,7 @@ const routes = [
         component: () => import('@/views/feedops/LarkBitable.vue'),
         meta: {
           requiresAuth: true,
-          permissions: ['admin']
+          permissions: ['lark:view']
         }
       },
       {
@@ -255,7 +256,8 @@ const routes = [
         component: () => import('@/views/xhs/XhsListDesktop.vue'),
         meta: {
           requiresAuth: true,
-          permissions: ['xhs:manage']
+          // 统一为 feed:manage — 跨平台共用
+          permissions: ['feed:manage']
         }
       },
       {
@@ -264,7 +266,8 @@ const routes = [
         component: () => import('@/views/xhs/XhsSubscriptions.vue'),
         meta: {
           requiresAuth: true,
-          permissions: ['xhs:manage']
+          // 统一为 feed:manage — 跨平台共用
+          permissions: ['feed:manage']
         }
       },
       {

@@ -15,7 +15,9 @@ router = APIRouter(prefix="/filter-rules", tags=["过滤规则管理"])
 
 
 class FilterRuleCreate(BaseModel):
-    feed_id: str  # JSON字符串，存储多个公众号ID数组
+    # 跨平台: feed_id 是 Feed.id 列表的 JSON 字符串 (公众号 / 小红书),
+    # 空字符串或 [] 表示全局规则 (作用于所有 feed)。
+    feed_id: Optional[str] = ""
     rule_name: str
     remove_ids: Optional[List[str]] = None
     remove_classes: Optional[List[str]] = None
@@ -40,13 +42,13 @@ class FilterRuleUpdate(BaseModel):
 
 @router.get("", summary="获取过滤规则列表")
 async def get_filter_rules(
-    feed_id: str = Query(None, description="公众号ID，不传则返回所有"),
+    feed_id: str = Query(None, description="feed_id 过滤 (跨平台,公众号/小红书),不传则返回所有"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user_or_ak)
 ):
-    """获取过滤规则列表，支持按公众号筛选"""
+    """获取过滤规则列表,支持按 feed_id 过滤 (跨平台)"""
     try:
         query = db.query(FilterRule)
         if feed_id:
@@ -163,7 +165,7 @@ async def create_filter_rule(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user_or_ak)
 ):
-    """为指定公众号创建过滤规则，支持多公众号"""
+    """创建过滤规则,支持多 feed 匹配和全局规则"""
     try:
         new_rule = FilterRule(
             feed_id=rule.feed_id,
@@ -271,13 +273,13 @@ async def delete_filter_rule(
         )
 
 
-@router.get("/mp/{feed_id}/active", summary="获取公众号的启用规则")
+@router.get("/mp/{feed_id}/active", summary="获取指定 feed 的启用规则 (跨平台)")
 async def get_active_rules_for_mp(
     feed_id: str,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user_or_ak)
 ):
-    """获取指定公众号的所有启用的过滤规则（支持多公众号匹配和全局规则）"""
+    """获取指定 feed 的所有启用过滤规则 (跨平台: 公众号 / 小红书),支持多 feed 匹配和全局规则"""
     try:
         # 获取所有启用的规则，然后在 Python 层面过滤
         rules = db.query(FilterRule).filter(
@@ -308,18 +310,18 @@ async def get_active_rules_for_mp(
 
         return success_response(data=rules_list)
     except Exception as e:
-        print(f"获取公众号过滤规则错误: {str(e)}")
+        print(f"获取 feed 过滤规则错误: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=error_response(code=50001, message="获取公众号过滤规则失败")
+            detail=error_response(code=50001, message="获取 feed 过滤规则失败")
         )
 
 
 def get_filter_rules_for_mp(feed_id: str) -> list:
     """
-    获取指定公众号的所有启用过滤规则（供内部调用）
-    返回规则列表，用于HTML过滤
-    支持多公众号匹配和全局规则（空feed_id数组）
+    获取指定 feed 的所有启用过滤规则 (跨平台,供内部调用)
+    返回规则列表,用于 HTML 过滤
+    支持多 feed 匹配和全局规则 (空 feed_id 数组)
     """
     session = DB.get_session()
     try:
@@ -359,7 +361,7 @@ def get_filter_rules_for_mp(feed_id: str) -> list:
             else:
                 print(f"[FilterRule] 跳过规则: {rule.rule_name}, feed_id={feed_id}, rule_feed_ids={feed_ids}")
 
-        print(f"[FilterRule] 为公众号 {feed_id} 找到 {len(matched_rules)} 条规则")
+        print(f"[FilterRule] 为 feed {feed_id} 找到 {len(matched_rules)} 条规则")
         return matched_rules
     except Exception as e:
         import traceback
@@ -370,14 +372,14 @@ def get_filter_rules_for_mp(feed_id: str) -> list:
 
 def apply_filter_rules(html_content: str, feed_id: str) -> str:
     """
-    对HTML内容应用指定公众号的过滤规则
+    对 HTML 内容应用指定 feed 的过滤规则 (跨平台)
 
     Args:
-        html_content: 原始HTML内容
-        feed_id: 公众号ID
+        html_content: 原始 HTML 内容
+        feed_id: Feed.id (公众号 / 小红书)
 
     Returns:
-        过滤后的HTML内容
+        过滤后的 HTML 内容
     """
     if not html_content:
         return html_content

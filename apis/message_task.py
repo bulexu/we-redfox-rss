@@ -220,7 +220,9 @@ async def run_message_task(
 class MessageTaskCreate(BaseModel):
     message_template: str
     web_hook_url: str
-    mps_id: str=""
+    # 改名自 mps_id: 模型列 target_feed_ids 现在跨平台 (公众号 + 小红书),
+    # 用 target_feed_ids 直接对应数据库列, 避免再走 Pydantic→ORM 字段映射。
+    target_feed_ids: str=""
     name: str=""
     message_type: int=0
     cron_exp:str=""
@@ -253,9 +255,7 @@ async def create_message_task(
             message_template=task_data.message_template,
             web_hook_url=task_data.web_hook_url,
             cron_exp=task_data.cron_exp,
-            # 改名自 mps_id (commit 65aaffd1): MessageTask 模型字段是 target_feed_ids,
-            # 但 Pydantic 入参仍叫 mps_id (前端按 apis 字段名提交), 这里做映射。
-            target_feed_ids=task_data.mps_id,
+            target_feed_ids=task_data.target_feed_ids,
             message_type=task_data.message_type,
             name=task_data.name,
             status=task_data.status if task_data.status is not None else 0,
@@ -302,9 +302,8 @@ async def update_message_task(
             db_task.message_template = task_data.message_template
         if task_data.web_hook_url is not None:
             db_task.web_hook_url = task_data.web_hook_url
-        if task_data.mps_id is not None:
-            # 改名自 mps_id: ORM 列名是 target_feed_ids, Pydantic 入参仍叫 mps_id
-            db_task.target_feed_ids = task_data.mps_id
+        if task_data.target_feed_ids is not None:
+            db_task.target_feed_ids = task_data.target_feed_ids
         if task_data.status is not None:
             db_task.status = task_data.status
         if task_data.cron_exp is not None:

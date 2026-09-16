@@ -39,11 +39,11 @@ async def tags_view(
         # 处理标签数据
         tag_list = []
         for tag in tags:
-            # 解析mps_id JSON
+            # 改名自 mps_id (commit 65aaffd1): Tags 模型字段是 feed_ids
             mps_ids = []
-            if tag.mps_id:
+            if tag.feed_ids:
                 try:
-                    mps_data = json.loads(tag.mps_id)
+                    mps_data = json.loads(tag.feed_ids)
                     mps_ids = [str(mp['id']) for mp in mps_data] if isinstance(mps_data, list) else []
                 except (json.JSONDecodeError, TypeError):
                     mps_ids = []
@@ -147,11 +147,11 @@ async def tag_detail_view(
         if not tag:
             raise HTTPException(status_code=404, detail="标签不存在")
         
-        # 解析mps_id JSON
+        # 改名自 mps_id (commit 65aaffd1): Tags 模型字段是 feed_ids
         mps_ids = []
-        if tag.mps_id:
+        if tag.feed_ids:
             try:
-                mps_data = json.loads(tag.mps_id)
+                mps_data = json.loads(tag.feed_ids)
                 mps_ids = [str(mp['id']) for mp in mps_data] if isinstance(mps_data, list) else []
             except (json.JSONDecodeError, TypeError):
                 mps_ids = []

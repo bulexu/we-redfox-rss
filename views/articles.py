@@ -48,10 +48,10 @@ async def articles_view(
         if order not in valid_orders:
             order = "desc"
         
-        # 预处理标签筛选的mp_ids
+        # 改名自 mps_id (commit 65aaffd1): Tags 模型字段是 feed_ids
         mps_ids = []
         if tag_id:
-            tag = session.query(Tags.mps_id).filter(Tags.id == tag_id, Tags.status == 1).scalar()
+            tag = session.query(Tags.feed_ids).filter(Tags.id == tag_id, Tags.status == 1).scalar()
             if tag:
                 try:
                     mps_data = json.loads(tag)

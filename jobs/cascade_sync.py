@@ -81,9 +81,11 @@ class CascadeSyncService:
                     
                     if existing_feed:
                         # 更新现有记录
-                        existing_feed.name = feed_data["mp_name"]
-                        existing_feed.cover = feed_data["mp_cover"]
-                        existing_feed.intro = feed_data["mp_intro"]
+                        # 改名自 mp_name/mp_cover/mp_intro (commit bcaa2212): 父节点
+                        # apis/cascade.py:342-344 返回的已经是 name/cover/intro
+                        existing_feed.name = feed_data["name"]
+                        existing_feed.cover = feed_data["cover"]
+                        existing_feed.intro = feed_data["intro"]
                         existing_feed.faker_id = feed_data.get("faker_id")
                         existing_feed.updated_at = datetime.utcnow()
                     else:
@@ -91,18 +93,18 @@ class CascadeSyncService:
                         new_feed = Feed(
                             id=feed_data["id"],
                             faker_id=feed_data.get("faker_id"),
-                            name=feed_data["mp_name"],
-                            cover=feed_data["mp_cover"],
-                            intro=feed_data["mp_intro"],
+                            name=feed_data["name"],
+                            cover=feed_data["cover"],
+                            intro=feed_data["intro"],
                             status=feed_data["status"],
                             created_at=datetime.utcnow(),
                             updated_at=datetime.utcnow()
                         )
                         session.add(new_feed)
-                    
+
                     count += 1
                 except Exception as e:
-                    print_error(f"同步公众号失败: {feed_data.get('mp_name')} - {str(e)}")
+                    print_error(f"同步公众号失败: {feed_data.get('name')} - {str(e)}")
             
             session.commit()
             
@@ -155,7 +157,9 @@ class CascadeSyncService:
                         existing_task.message_type = task_data["message_type"]
                         existing_task.message_template = task_data["message_template"]
                         existing_task.web_hook_url = task_data["web_hook_url"]
-                        existing_task.mps_id = task_data["mps_id"]
+                        # 改名自 mps_id (commit 65aaffd1): 父节点 apis/cascade.py:379
+                        # 返回的也是 target_feed_ids,  下面接收端改成同名键
+                        existing_task.target_feed_ids = task_data["target_feed_ids"]
                         existing_task.cron_exp = task_data["cron_exp"]
                         existing_task.status = task_data["status"]
                         existing_task.headers = task_data.get("headers", "")
@@ -169,7 +173,8 @@ class CascadeSyncService:
                             message_type=task_data["message_type"],
                             message_template=task_data["message_template"],
                             web_hook_url=task_data["web_hook_url"],
-                            mps_id=task_data["mps_id"],
+                            # 改名自 mps_id (commit 65aaffd1)
+                            target_feed_ids=task_data["target_feed_ids"],
                             cron_exp=task_data["cron_exp"],
                             status=task_data["status"],
                             headers=task_data.get("headers", ""),
@@ -349,7 +354,7 @@ class CascadeSyncService:
         for feed_data in feeds_data:
             try:
                 feed_id = feed_data.get("id")
-                feed_name = feed_data.get("mp_name", feed_id)
+                feed_name = feed_data.get("name", feed_id)
                 
                 print_info(f"正在更新公众号: {feed_name}")
                 
@@ -401,10 +406,10 @@ class CascadeSyncService:
                     print_error(f"公众号 {feed_name} 更新失败: {result_container.get('error', '未知错误')}")
                 
             except Exception as e:
-                print_error(f"处理公众号 {feed_data.get('mp_name')} 失败: {str(e)}")
+                print_error(f"处理公众号 {feed_data.get('name')} 失败: {str(e)}")
                 results.append({
                     "feed_id": feed_data.get("id"),
-                    "name": feed_data.get("mp_name"),
+                    "name": feed_data.get("name"),
                     "success": False,
                     "article_count": 0,
                     "new_article_count": 0,

@@ -199,7 +199,8 @@ async def run_message_task(
             import json
             for task in tasks:
                 try:
-                    ids=json.loads(task.mps_id)
+                    # 改名自 mps_id: ORM 列名是 target_feed_ids
+                    ids=json.loads(task.target_feed_ids)
                     count+=len(ids)
                     mps['count']=count
                     mps['list'].append(ids)
@@ -252,7 +253,9 @@ async def create_message_task(
             message_template=task_data.message_template,
             web_hook_url=task_data.web_hook_url,
             cron_exp=task_data.cron_exp,
-            mps_id=task_data.mps_id,
+            # 改名自 mps_id (commit 65aaffd1): MessageTask 模型字段是 target_feed_ids,
+            # 但 Pydantic 入参仍叫 mps_id (前端按 apis 字段名提交), 这里做映射。
+            target_feed_ids=task_data.mps_id,
             message_type=task_data.message_type,
             name=task_data.name,
             status=task_data.status if task_data.status is not None else 0,
@@ -300,7 +303,8 @@ async def update_message_task(
         if task_data.web_hook_url is not None:
             db_task.web_hook_url = task_data.web_hook_url
         if task_data.mps_id is not None:
-            db_task.mps_id = task_data.mps_id
+            # 改名自 mps_id: ORM 列名是 target_feed_ids, Pydantic 入参仍叫 mps_id
+            db_task.target_feed_ids = task_data.mps_id
         if task_data.status is not None:
             db_task.status = task_data.status
         if task_data.cron_exp is not None:

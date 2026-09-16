@@ -34,7 +34,8 @@ class CreateBitableRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     app_token: str = Field(..., min_length=1, max_length=255)
     table_id: str = Field(..., min_length=1, max_length=255)
-    mp_ids: List[str] = Field(default_factory=list)
+    # 改名自 mp_ids (commit 65aaffd1): 前端用 feed_ids 表达, 实际值是 Feed.id 列表
+    feed_ids: List[str] = Field(default_factory=list)
     field_mapping: dict = Field(default_factory=dict)
     enabled: bool = True
 
@@ -43,7 +44,7 @@ class UpdateBitableRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     app_token: Optional[str] = Field(None, min_length=1, max_length=255)
     table_id: Optional[str] = Field(None, min_length=1, max_length=255)
-    mp_ids: Optional[List[str]] = None
+    feed_ids: Optional[List[str]] = None
     field_mapping: Optional[dict] = None
     enabled: Optional[bool] = None
 

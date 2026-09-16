@@ -130,7 +130,7 @@ const sysInfo = ref<SysInfo>({
     machine: "",
     processor: "",
   },
-  api_version: "/api/v1/wx",
+  api_version: "/api/v1",
   core_version: "",
   latest_version: "",
   need_update: true,

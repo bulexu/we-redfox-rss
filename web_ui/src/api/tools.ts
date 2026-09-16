@@ -21,7 +21,7 @@ export const exportArticles = (params:any) => {
       export_pdf: params.format.includes('pdf'),
       zip_filename: params.zip_filename||''
     };
-  return http.post<{code: number, data: string}>('/wx/tools/export/articles', requestData, {
+  return http.post<{code: number, data: string}>('/tools/export/articles', requestData, {
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -33,12 +33,12 @@ export const getExportRecords = (params:any) => {
     const requestData = {
       mp_id: resolveFeedId(params),
     };
-  return http.get<{code: number, data: string}>('/wx/tools/export/list', {params:requestData})
+  return http.get<{code: number, data: string}>('/tools/export/list', {params:requestData})
 }
 export const DeleteExportRecords = (params:any) => {
     const requestData = {
       mp_id: resolveFeedId(params),
       filename: params.filename,
     };
-  return http.delete<{code: number, data: string}>('/wx/tools/export/delete', {data:requestData})
+  return http.delete<{code: number, data: string}>('/tools/export/delete', {data:requestData})
 }

@@ -6,22 +6,22 @@ export const listConfigs = (params?: { page?: number; pageSize?: number }) => {
     offset: (params?.page || 0) * (params?.pageSize || 10),
     limit: params?.pageSize || 10
   }
-  return http.get<ConfigManagement>('/wx/configs', { params: apiParams })
+  return http.get<ConfigManagement>('/configs', { params: apiParams })
 }
 export const getConfig = (key: string) => {
-  return http.get<ConfigManagement>(`/wx/configs/${key}`)
+  return http.get<ConfigManagement>(`/configs/${key}`)
 }
 
 
 
 export const createConfig = (data: ConfigManagementUpdate) => {
-  return http.post('/wx/configs', data)
+  return http.post('/configs', data)
 }
 
 export const updateConfig = (key: string, data: ConfigManagementUpdate) => {
-  return http.put(`/wx/configs/${key}`, data)
+  return http.put(`/configs/${key}`, data)
 }
 
 export const deleteConfig = (key: string) => {
-  return http.delete(`/wx/configs/${key}`)
+  return http.delete(`/configs/${key}`)
 }

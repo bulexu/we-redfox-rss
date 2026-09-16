@@ -13,7 +13,7 @@ except ValueError as e:
     LATEST_VERSION = ''
 
 #API接口前缀
-API_BASE = "/api/v1/wx"
+API_BASE = "/api/v1"
 
 #工作目录
 WORK_DIR="./work"

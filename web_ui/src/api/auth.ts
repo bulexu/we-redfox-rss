@@ -15,7 +15,7 @@ export const login = (data: LoginParams) => {
   const formData = new URLSearchParams()
   formData.append('username', data.username)
   formData.append('password', data.password)
-  return http.post<LoginResult>('/wx/auth/login', formData, {
+  return http.post<LoginResult>('/auth/login', formData, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded'
     }
@@ -29,7 +29,7 @@ export interface VerifyResult {
 }
 
 export const verifyToken = () => {
-  return http.get<VerifyResult>('/wx/auth/verify')
+  return http.get<VerifyResult>('/auth/verify')
 }
 let qrCodeIntervalId:number = 0;
 let qrCodeCounter = 0;
@@ -42,7 +42,7 @@ export const QRCode = () => {
     }
     qrCodeCounter = 0;
     
-    http.get('/wx/auth/qr/code').then(res => {
+    http.get('/auth/qr/code').then(res => {
       const maxAttempts = 500;
       qrCodeIntervalId = setInterval(() => {
         qrCodeCounter++;
@@ -76,7 +76,7 @@ export const checkQRCodeStatus = () => {
       qrCodeIntervalId = 0;
     }
       interval_status_Id = setInterval(() => {
-        http.get("wx/auth/qr/status").then(response => {
+        http.get('/auth/qr/status').then(response => {
           if(response?.login_status){
             Message.success("授权成功")
             clearInterval(interval_status_Id)
@@ -94,15 +94,15 @@ export const checkQRCodeStatus = () => {
   })
 }
 export const refreshToken = () => {
-  return http.post<LoginResult>('/wx/auth/refresh')
+  return http.post<LoginResult>('/auth/refresh')
 }
 
 export const logout = () => {
-  return http.post('/wx/auth/logout')
+  return http.post('/auth/logout')
 }
 
 export const getCurrentUser = () => {
-  return http.get('/wx/user')
+  return http.get('/user')
 }
 
 // ===== 密码找回相关 =====
@@ -118,9 +118,9 @@ export interface ResetPasswordParams {
 }
 
 export const requestResetCode = (data: RequestResetCodeParams) => {
-  return http.post('/wx/auth/password/reset-request', data)
+  return http.post('/auth/password/reset-request', data)
 }
 
 export const resetPassword = (data: ResetPasswordParams) => {
-  return http.post('/wx/auth/password/reset', data)
+  return http.post('/auth/password/reset', data)
 }

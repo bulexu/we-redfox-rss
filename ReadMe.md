@@ -238,11 +238,11 @@ from the system scraping loop** — you can start/stop it independently:
 
 ```bash
 # 1. Pull articles that need body content (has_content=0, not deleted)
-GET  /api/v1/wx/articles/pending-content?limit=10&mp_id=MP_WXS_xxx
+GET  /api/v1/articles/pending-content?limit=10&mp_id=MP_WXS_xxx
 Authorization: AK-SK {ak}:{sk}
 
 # 2. Write the body content (or mark deleted)
-POST /api/v1/wx/articles/{article_id}/content
+POST /api/v1/articles/{article_id}/content
 Authorization: AK-SK {ak}:{sk}
 Content-Type: application/json
 {
@@ -330,9 +330,9 @@ frontend as static files:
 ```
 ┌──────────────┐    ┌────────────────────────────────────┐
 │  Vue 3 SPA   │    │  FastAPI (uvicorn, port 8001)      │
-│  (static/)   │◄──►│  ├─ /api/v1/wx  (article/feed/...) │
-└──────────────┘    │  ├─ /api/v1/wx/redfox  (stats/logs)│
-                    │  ├─ /api/v1/wx/lark   (bitables)   │
+│  (static/)   │◄──►│  ├─ /api/v1  (article/feed/...) │
+└──────────────┘    │  ├─ /api/v1/redfox  (stats/logs)│
+                    │  ├─ /api/v1/lark   (bitables)   │
                     │  └─ /story/api/gzh/data/... (redfox)│
                     └────────────┬───────────────────────┘
                                  │

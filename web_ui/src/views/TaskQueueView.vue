@@ -359,7 +359,7 @@ let refreshTimer: number | null = null
 const getWsUrl = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
-  const apiBase = '/api/v1/wx'
+  const apiBase = '/api/v1'
   const token = getToken()
   const tokenParam = token ? `?token=${encodeURIComponent(token)}` : ''
   return `${protocol}//${host}${apiBase}/task-queue/ws${tokenParam}`

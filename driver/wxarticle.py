@@ -708,6 +708,7 @@ class Web:
             except Exception as e:
                 print_error(f"修复图片失败: {str(e)}")
             return content
+    
     def clean_article_content(html_content: str,mp_id:str=""):
         from tools.htmltools import htmltools
         html_content=Web.fix_images(html_content)

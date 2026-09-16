@@ -20,11 +20,11 @@ export interface UpdateUserParams {
 }
 
 export const getUserInfo = () => {
-  return http.get<{code: number, data: UserInfo}>('/wx/user')
+  return http.get<{code: number, data: UserInfo}>('/user')
 }
 
 export const updateUserInfo = (data: UpdateUserParams) => {
-  return http.put<{code: number, message: string}>('/wx/user', data)
+  return http.put<{code: number, message: string}>('/user', data)
 }
 
 export interface ChangePasswordParams {
@@ -33,7 +33,7 @@ export interface ChangePasswordParams {
 }
 
 export const changePassword = (data: ChangePasswordParams) => {
-  return http.put<{code: number, message: string}>('/wx/user/password', data, {
+  return http.put<{code: number, message: string}>('/user/password', data, {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -53,7 +53,7 @@ export const toggleUserStatus = (active: boolean) => {
 export const uploadAvatar = (file: File) => {
   const formData = new FormData()
   formData.append('file', file)
-  return http.post<{code: number, url: string}>('/wx/user/avatar', formData, {
+  return http.post<{code: number, url: string}>('/user/avatar', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -80,7 +80,7 @@ export interface UserListParams {
 }
 
 export const getUserList = (params?: UserListParams) => {
-  return http.get<{list: UserListResponse[], total: number, page: number, page_size: number}>('/wx/user/list', { params })
+  return http.get<{list: UserListResponse[], total: number, page: number, page_size: number}>('/user/list', { params })
 }
 
 export interface AddUserParams {
@@ -93,7 +93,7 @@ export interface AddUserParams {
 }
 
 export const addUser = (data: AddUserParams) => {
-  return http.post<{code: number, message: string, data?: UserListResponse}>('/wx/user', data)
+  return http.post<{code: number, message: string, data?: UserListResponse}>('/user', data)
 }
 
 export interface UpdateUserByIdParams {
@@ -105,15 +105,15 @@ export interface UpdateUserByIdParams {
 }
 
 export const updateUserById = (userId: string, data: UpdateUserByIdParams) => {
-  return http.put<{code: number, message: string}>(`/wx/user/${userId}`, data)
+  return http.put<{code: number, message: string}>(`/user/${userId}`, data)
 }
 
 export const deleteUser = (userId: string) => {
-  return http.delete<{code: number, message: string}>(`/wx/user/${userId}`)
+  return http.delete<{code: number, message: string}>(`/user/${userId}`)
 }
 
 export const resetUserPassword = (userId: string, newPassword: string) => {
-  return http.post<{code: number, message: string}>(`/wx/user/${userId}/reset-password`, {
+  return http.post<{code: number, message: string}>(`/user/${userId}/reset-password`, {
     new_password: newPassword
   })
 }

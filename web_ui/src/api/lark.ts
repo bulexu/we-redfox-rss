@@ -55,7 +55,7 @@ export interface TestBitableResp {
 }
 
 export const listBitables = (params?: { enabled?: boolean; feed_id?: string; limit?: number; offset?: number }) => {
-  return http.get<LarkBitableListResp>('/wx/lark/bitables', { params })
+  return http.get<LarkBitableListResp>('/lark/bitables', { params })
 }
 
 export interface LarkStatus {
@@ -69,27 +69,27 @@ export interface LarkStatus {
 }
 
 export const getLarkStatus = () => {
-  return http.get<LarkStatus>('/wx/lark/status')
+  return http.get<LarkStatus>('/lark/status')
 }
 
 export const createBitable = (data: CreateBitableRequest) => {
-  return http.post<LarkBitable>('/wx/lark/bitables', data)
+  return http.post<LarkBitable>('/lark/bitables', data)
 }
 
 export const getBitable = (id: string) => {
-  return http.get<LarkBitable>(`/wx/lark/bitables/${id}`)
+  return http.get<LarkBitable>(`/lark/bitables/${id}`)
 }
 
 export const updateBitable = (id: string, data: UpdateBitableRequest) => {
-  return http.put<LarkBitable>(`/wx/lark/bitables/${id}`, data)
+  return http.put<LarkBitable>(`/lark/bitables/${id}`, data)
 }
 
 export const deleteBitable = (id: string) => {
-  return http.delete(`/wx/lark/bitables/${id}`)
+  return http.delete(`/lark/bitables/${id}`)
 }
 
 export const testBitable = (id: string) => {
-  return http.post<TestBitableResp>(`/wx/lark/bitables/${id}/test`)
+  return http.post<TestBitableResp>(`/lark/bitables/${id}/test`)
 }
 
 export interface ManualPushItemResult {
@@ -113,7 +113,7 @@ export interface ManualPushResp {
 }
 
 export const manualPush = (id: string, article_ids: string[]) => {
-  return http.post<ManualPushResp>(`/wx/lark/bitables/${id}/push`, {
+  return http.post<ManualPushResp>(`/lark/bitables/${id}/push`, {
     article_ids,
   })
 }

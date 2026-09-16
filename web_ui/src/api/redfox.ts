@@ -50,7 +50,7 @@ export interface RedfoxDailyResponse {
 export const getRedfoxStats = async (date?: string): Promise<RedfoxStats> => {
   try {
     const params = date ? { date } : {}
-    const response = await http.get('wx/redfox/stats', { params })
+    const response = await http.get('/redfox/stats', { params })
     const data = response || {}
     return {
       date: data.date || new Date().toISOString().split('T')[0],
@@ -83,7 +83,7 @@ export const getRedfoxLogs = async (
   offset = 0
 ): Promise<RedfoxLogsResponse> => {
   try {
-    const response = await http.get('wx/redfox/logs', {
+    const response = await http.get('/redfox/logs', {
       params: { limit, offset }
     })
     return {
@@ -102,7 +102,7 @@ export const getRedfoxLogs = async (
  */
 export const clearRedfoxLogs = async (): Promise<RedfoxClearResponse | null> => {
   try {
-    const response = await http.post('wx/redfox/logs/clear')
+    const response = await http.post('/redfox/logs/clear')
     return response || null
   } catch (error) {
     console.error('清空 redfox 日志失败:', error)
@@ -115,7 +115,7 @@ export const clearRedfoxLogs = async (): Promise<RedfoxClearResponse | null> => 
  */
 export const getRedfoxDailyStats = async (days = 7): Promise<RedfoxDailyResponse> => {
   try {
-    const response = await http.get('wx/redfox/daily', { params: { days } })
+    const response = await http.get('/redfox/daily', { params: { days } })
     const data = response || {}
     return {
       items: Array.isArray(data.items) ? data.items : [],

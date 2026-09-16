@@ -70,7 +70,7 @@ export interface SyncLogsResponse {
 
 // 创建级联节点
 export const createNode = (data: CreateNodeRequest) => {
-  return http.post<{ node_id: string, node_type: number, name: string, is_active: boolean, created_at: string }>('/wx/cascade/nodes', data)
+  return http.post<{ node_id: string, node_type: number, name: string, is_active: boolean, created_at: string }>('/cascade/nodes', data)
 }
 
 // 获取节点列表
@@ -79,37 +79,37 @@ export const listNodes = (nodeType?: number) => {
   if (nodeType !== undefined) {
     params.node_type = nodeType
   }
-  return http.get<CascadeNode[]>('/wx/cascade/nodes', { params })
+  return http.get<CascadeNode[]>('/cascade/nodes', { params })
 }
 
 // 获取节点详情
 export const getNode = (nodeId: string) => {
-  return http.get<CascadeNode>(`/wx/cascade/nodes/${nodeId}`)
+  return http.get<CascadeNode>(`/cascade/nodes/${nodeId}`)
 }
 
 // 更新节点
 export const updateNode = (nodeId: string, data: UpdateNodeRequest) => {
-  return http.put(`/wx/cascade/nodes/${nodeId}`, data)
+  return http.put(`/cascade/nodes/${nodeId}`, data)
 }
 
 // 删除节点
 export const deleteNode = (nodeId: string) => {
-  return http.delete(`/wx/cascade/nodes/${nodeId}`)
+  return http.delete(`/cascade/nodes/${nodeId}`)
 }
 
 // 生成节点凭证
 export const generateNodeCredentials = (nodeId: string) => {
-  return http.post<NodeCredentials>(`/wx/cascade/nodes/${nodeId}/credentials`)
+  return http.post<NodeCredentials>(`/cascade/nodes/${nodeId}/credentials`)
 }
 
 // 测试节点连接
 export const testNodeConnection = (nodeId: string, data?: TestConnectionRequest) => {
-  return http.post(`/wx/cascade/nodes/${nodeId}/test-connection`, data)
+  return http.post(`/cascade/nodes/${nodeId}/test-connection`, data)
 }
 
 // 获取同步日志
 export const getSyncLogs = (params?: { node_id?: string; operation?: string; limit?: number; offset?: number }) => {
-  return http.get<SyncLogsResponse>('/wx/cascade/sync-logs', { params })
+  return http.get<SyncLogsResponse>('/cascade/sync-logs', { params })
 }
 
 // 任务分配相关接口
@@ -132,14 +132,14 @@ export interface AllocationsResponse {
 
 // 获取任务分配列表
 export const getAllocations = (params?: { task_id?: string; node_id?: string; status?: string; limit?: number }) => {
-  return http.get<AllocationsResponse>('/wx/cascade/allocations', { params })
+  return http.get<AllocationsResponse>('/cascade/allocations', { params })
 }
 
 // 分发任务
 export const dispatchTask = (taskId?: string) => {
   const url = taskId 
-    ? `/wx/cascade/dispatch-task?task_id=${taskId}`
-    : '/wx/cascade/dispatch-task'
+    ? `/cascade/dispatch-task?task_id=${taskId}`
+    : '/cascade/dispatch-task'
   return http.post<{
     online_nodes: number
     task_count: number
@@ -181,7 +181,7 @@ export interface FeedStatusResponse {
 
 // 获取公众号更新状态
 export const getFeedStatus = (params?: { feed_id?: string; limit?: number; offset?: number; sort_by?: string; sort_order?: 'asc' | 'desc' }) => {
-  return http.get<FeedStatusResponse>('/wx/cascade/feed-status', { params })
+  return http.get<FeedStatusResponse>('/cascade/feed-status', { params })
 }
 
 // 待认领任务统计
@@ -196,5 +196,5 @@ export interface PendingAllocationsStats {
 
 // 获取待认领任务统计
 export const getPendingAllocations = () => {
-  return http.get<PendingAllocationsStats>('/wx/cascade/pending-allocations')
+  return http.get<PendingAllocationsStats>('/cascade/pending-allocations')
 }

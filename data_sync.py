@@ -483,7 +483,7 @@ class DatabaseSynchronizer:
         # 7b. feeds 旧列 (mp_name/mp_cover/mp_intro) 与新列同时存在的兜底:
         #     现象 — SQLAlchemy 启动时已根据新 model 自动创建 ``name``/``cover``/``intro``
         #     三列 (旧数据并未迁移),  第 7 步因 ``new_col`` 已存在被跳过,  导致
-        #     /api/v1/wx/mps 返回的 name/cover/intro 全部为 NULL。
+        #     /api/v1/mps 返回的 name/cover/intro 全部为 NULL。
         #     处理:
         #       1. 把 ``mp_name`` 的非空数据复制到 ``name`` (同名 ``mp_cover``/``mp_intro``
         #          处理同理)。

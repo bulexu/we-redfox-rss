@@ -10,7 +10,7 @@
   * 提交:  走 ``lark_maybe_push(article_id)`` 入口(模块级线程池),  不阻塞
     cron 调度线程本身。worker 内部按 publish_time 倒序处理并抬升水印。
   * 间隔:  ``lark.push_interval_hours`` 配置,  允许值 0(关闭) / 2 / 4 / 6 / 12 / 24,
-    0 表示关闭自动推送,  仍可通过 ``POST /api/v1/wx/lark/bitables/{id}/push`` 手动推。
+    0 表示关闭自动推送,  仍可通过 ``POST /api/v1/lark/bitables/{id}/push`` 手动推。
 
 并发安全:
   * 单次扫描限速 ``lark.push_batch_size``,  超出的留到下一轮,  避免 worker 池被

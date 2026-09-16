@@ -1,6 +1,6 @@
 """飞书多维表 (Lark Bitable) 推送配置 API。
 
-路由前缀: ``/api/v1/wx/lark/bitables`` (与其它 ``apis/*.py`` 保持一致)。
+路由前缀: ``/api/v1/lark/bitables`` (与其它 ``apis/*.py`` 保持一致)。
 """
 from __future__ import annotations
 

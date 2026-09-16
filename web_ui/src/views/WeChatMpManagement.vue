@@ -52,7 +52,7 @@
         </a-form-item>
         <a-form-item label="封面图" field="cover">
           <a-upload
-            action="/wx/mps/upload"
+            action="/mps/upload"
             :headers="headers"
             @success="handleUploadSuccess"
           />

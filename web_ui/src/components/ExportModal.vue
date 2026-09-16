@@ -81,7 +81,7 @@ const handleOk = () => {
 };
 const SubmitExport = async (params: any) => {
   try {
-    // 后端 /wx/tools/export/articles 仍使用 mp_id 作为 body 字段名,tools.ts 内部已做兼容
+    // 后端 /tools/export/articles 仍使用 mp_id 作为 body 字段名,tools.ts 内部已做兼容
     const result = await exportArticles(params);
     console.log('导出成功:', result);
     Message.success(result.message || '导出成功！');

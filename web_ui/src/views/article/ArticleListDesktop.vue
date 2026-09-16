@@ -60,8 +60,8 @@
                           <div style="font-size: 12px; color: var(--color-text-3);" v-if="item.id">ID: {{ item.id }}</div>
                         </div>
                       </div>
-                      <div v-if="item.mp_intro" style="font-size: 12px; color: var(--color-text-2); line-height: 1.5;">
-                        {{ item.mp_intro }}
+                      <div v-if="item.intro || item.mp_intro" style="font-size: 12px; color: var(--color-text-2); line-height: 1.5;">
+                        {{ item.intro || item.mp_intro }}
                       </div>
                       <div v-if="canManageMp(item.id)" style="display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid var(--color-border);">
                         <a-button size="small" type="text" status="danger" @click.stop="deleteMp(item.id)">
@@ -167,7 +167,7 @@
         </a-page-header>
 
         <a-card style="border:0">
-          <a-alert type="success" closable>{{ activeFeed?.mp_intro || "请选择一个公众号码进行管理,搜索文章后再点击订阅会有惊喜哟！！！" }}</a-alert>
+          <a-alert type="success" closable>{{ activeFeed?.intro || activeFeed?.mp_intro || "请选择一个公众号码进行管理,搜索文章后再点击订阅会有惊喜哟！！！" }}</a-alert>
           <div class="search-bar">
             <a-input-search class="search-input" v-model="searchText" placeholder="搜索文章标题" @search="handleSearch" @keyup.enter="handleSearch"
               allow-clear />
@@ -278,7 +278,7 @@
                 <span style="margin-left: 8px; color: var(--color-text-3);">天</span>
               </a-form-item>
               <a-form-item label="公众号">
-                <a-select v-model="cleanOldArticlesForm.mp_id" placeholder="全部公众号" allow-clear>
+                <a-select v-model="cleanOldArticlesForm.feed_id" placeholder="全部公众号" allow-clear>
                   <a-option value="">全部公众号</a-option>
                   <a-option v-for="mp in mpList" :key="mp.id" :value="mp.id">{{ mp.name }}</a-option>
                 </a-select>
@@ -456,7 +456,7 @@ const publishTypeColorMap: Record<number, string> = {
 const allColumnOptions = [
   { key: 'pic_url', label: '题图', required: false },
   { key: 'title', label: '文章标题', required: true },
-  { key: 'mp_id', label: '公众号', required: false },
+  { key: 'feed_id', label: '公众号', required: false },
   { key: 'has_content', label: '正文', required: false },
   { key: 'copyright_stat', label: '原创', required: false },
   { key: 'item_show_type', label: '类型', required: false },
@@ -466,7 +466,7 @@ const allColumnOptions = [
 ]
 
 // 默认显示的列
-const defaultVisibleColumns = ['pic_url', 'title', 'mp_id', 'created_at', 'publish_time', 'actions']
+const defaultVisibleColumns = ['pic_url', 'title', 'feed_id', 'created_at', 'publish_time', 'actions']
 
 // 从 localStorage 读取列配置
 const getStoredColumns = (): string[] => {
@@ -619,11 +619,12 @@ const columns = computed(() => {
     },
     {
       title: '公众号',
-      dataIndex: 'mp_id',
+      dataIndex: 'feed_id',
       width: 90,
       ellipsis: true,
       render: ({ record }) => {
-        const mp = mpList.value.find(item => item.id === record.mp_id);
+        const feedId = (record as any).feed_id || record.mp_id
+        const mp = mpList.value.find(item => item.id === feedId);
         return h('a', {
           style: {
             color: 'var(--color-link)',
@@ -632,9 +633,9 @@ const columns = computed(() => {
           },
           onClick: (e: MouseEvent) => {
             e.preventDefault()
-            handleMpClick(record.mp_id)
+            handleMpClick(feedId)
           }
-        }, record.mp_name || mp?.name || record.mp_id)
+        }, (record as any).name || record.mp_name || mp?.name || feedId)
       }
     },
     {
@@ -800,7 +801,7 @@ const fetchArticles = async () => {
       page: pagination.value.current - 1,
       pageSize: pagination.value.pageSize,
       search: searchText.value,
-      mp_id: activeMpId.value
+      feed_id: activeMpId.value
     }
 
     // 根据筛选类型添加不同的参数（单选）
@@ -824,7 +825,8 @@ const fetchArticles = async () => {
     // 确保数据包含必要字段
     articles.value = (res.list || []).map(item => ({
       ...item,
-      mp_name: item.mp_name || item.account_name || '未知公众号',
+      name: item.name || item.mp_name || item.account_name || '未知公众号',
+      feed_id: item.feed_id || item.mp_id,
       publish_time: item.publish_time || item.create_time || '-',
       url: item.url || "https://mp.weixin.qq.com/s/" + item.id,
       is_favorite: item.is_favorite === 1 ? 1 : 0
@@ -963,14 +965,14 @@ const cleanOldArticlesPreviewVisible = ref(false)
 const cleanOldArticlesLoading = ref(false)
 const cleanOldArticlesForm = ref({
   days: 3,
-  mp_id: ''
+  feed_id: ''
 })
 const cleanOldArticlesPreviewData = ref<any>({})
 
 const showCleanOldArticlesModal = () => {
   cleanOldArticlesForm.value = {
     days: 3,
-    mp_id: ''
+    feed_id: ''
   }
   cleanOldArticlesModalVisible.value = true
 }
@@ -980,7 +982,7 @@ const handleCleanOldArticlesPreview = async () => {
   try {
     const res = await cleanOldArticles({
       days: cleanOldArticlesForm.value.days,
-      mp_id: cleanOldArticlesForm.value.mp_id || undefined,
+      feed_id: cleanOldArticlesForm.value.feed_id || undefined,
       dry_run: true
     })
     // http 拦截器已经返回了 data 部分
@@ -1003,7 +1005,7 @@ const handleCleanOldArticlesConfirm = async () => {
   try {
     const res = await cleanOldArticles({
       days: cleanOldArticlesForm.value.days,
-      mp_id: cleanOldArticlesForm.value.mp_id || undefined,
+      feed_id: cleanOldArticlesForm.value.feed_id || undefined,
       dry_run: false
     })
     Message.success(res?.message || '删除成功')
@@ -1028,7 +1030,7 @@ const handleCleanOldArticles = async () => {
       try {
         const res = await cleanOldArticles({
           days: cleanOldArticlesForm.value.days,
-          mp_id: cleanOldArticlesForm.value.mp_id || undefined,
+          feed_id: cleanOldArticlesForm.value.feed_id || undefined,
           dry_run: false
         })
         Message.success(res?.message || '删除成功')
@@ -1229,10 +1231,10 @@ const handleBatchDelete = () => {
 }
 
 const handleExportShow = async () => {
-  let mp_id=activeFeed.value?.id
+  let feed_id=activeFeed.value?.id
   let ids=selectedRowKeys.value
   let mp_name=activeFeed.value?.name || activeFeed.value?.mp_name || '全部'
-  exportModal.value.show(mp_id,ids,mp_name)
+  exportModal.value.show(feed_id,ids,mp_name)
 }
 
 
@@ -1271,7 +1273,7 @@ const fetchMpList = async () => {
       id: item.id || item.mp_id,
       name: item.name || item.mp_name,
       avatar: item.avatar || item.mp_cover || '',
-      mp_intro: item.mp_intro || item.mp_intro || '',
+      intro: item.intro || item.mp_intro || '',
       article_count: item.article_count || 0,
       status: item.status ?? 1
     }))
@@ -1282,7 +1284,7 @@ const fetchMpList = async () => {
         id: FEATURED_MP_ID,
         name: FEATURED_MP_NAME,
         avatar: '/static/logo.svg',
-        mp_intro: '用户手动添加的精选文章',
+        intro: '用户手动添加的精选文章',
         article_count: 0,
         status: 1
       });
@@ -1291,7 +1293,7 @@ const fetchMpList = async () => {
         id: '',
         name: '全部',
         avatar: '/static/logo.svg',
-        mp_intro: '显示所有公众号文章',
+        intro: '显示所有公众号文章',
         article_count: res.total || 0,
         status: 1
       });

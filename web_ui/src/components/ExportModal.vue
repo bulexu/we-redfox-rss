@@ -44,7 +44,7 @@ const form = ref({
   scope: 'all',
   format: ['pdf', 'docx', 'json', 'csv',"md"],
   page_count: 10,
-  mp_id: '',
+  feed_id: '',
   ids:[],
   add_title: true,
   remove_images: false,
@@ -54,20 +54,20 @@ const form = ref({
 
 const emit = defineEmits(['confirm']);
 
-const show = (mp_id: string, ids:any, mp_name?: string) => {
+const show = (feed_id: string, ids:any, mp_name?: string) => {
   visible.value = true;
-  form.value.mp_id = mp_id;
+  form.value.feed_id = feed_id;
   console.log(ids)
   form.value.scope = ids && ids.length > 0 ? 'selected' : 'all';
   form.value.ids=ids;
-  
+
   // 如果提供了公众号名称，设置默认文件名
   if (mp_name && mp_name !== '全部') {
     form.value.zip_filename = `${mp_name}_文章.zip`;
   } else {
     form.value.zip_filename = '全部文章.zip';
   }
-  
+
 };
 
 const hide = () => {
@@ -81,6 +81,7 @@ const handleOk = () => {
 };
 const SubmitExport = async (params: any) => {
   try {
+    // 后端 /wx/tools/export/articles 仍使用 mp_id 作为 body 字段名,tools.ts 内部已做兼容
     const result = await exportArticles(params);
     console.log('导出成功:', result);
     Message.success(result.message || '导出成功！');

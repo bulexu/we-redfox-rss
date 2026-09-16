@@ -18,8 +18,11 @@ const formModel = ref<TagCreate>({
   cover: null,
   intro: null,
   status: 1,
-  mps_id: []
+  feed_ids: '[]'
 })
+
+// 选中的公众号(MpItem[]),与 MpMultiSelect 双向绑定,提交时序列化为 JSON 字符串
+const selectedFeeds = ref<any[]>([])
 
 const rules = {
   name: [{ required: true, message: '请输入标签名称' }]
@@ -31,12 +34,13 @@ const fetchTag = async (id: string) => {
     const res = await getTag(id)
     formModel.value = {
       ...res,
-      mps_id: JSON.parse(res.mps_id||[]),
+      feed_ids: (res as any).feed_ids || '[]',
     }
+    selectedFeeds.value = JSON.parse((res as any).feed_ids || '[]')
      // 初始化选择器数据
     nextTick(() => {
       if (mpSelectorRef.value) {
-        mpSelectorRef.value.parseSelected(formModel.value.mps_id)
+        mpSelectorRef.value.parseSelected(selectedFeeds.value)
       }
     })
   } catch (error) {
@@ -91,10 +95,10 @@ const handleImageError = (e: Event) => {
 const handleSubmit = async () => {
   try {
     formLoading.value = true
-     // 将mps_id转换为字符串
-    const submitData = {
+     // 将 selectedFeeds 序列化为 JSON 字符串保存到 feed_ids
+    const submitData: TagCreate = {
       ...formModel.value,
-      mps_id: JSON.stringify(formModel.value.mps_id)
+      feed_ids: JSON.stringify(selectedFeeds.value)
     }
     
     if (isEdit.value) {
@@ -182,10 +186,10 @@ onMounted(() => {
           />
         </a-form-item>
 
-        <a-form-item label="公众号" field="mps_id">
+        <a-form-item label="公众号" field="feed_ids">
           <a-space>
             <a-input
-              :model-value="(formModel.mps_id||[]).map(mp => mp.id.toString()).join(',')"
+              :model-value="(selectedFeeds||[]).map(mp => mp.id?.toString() || mp.toString()).join(',')"
               placeholder="请选择公众号"
               readonly
               style="width: 300px"
@@ -212,9 +216,9 @@ onMounted(() => {
   :footer="false"
   width="800px"
 >
-  <MpMultiSelect 
+  <MpMultiSelect
     ref="mpSelectorRef"
-    v-model="formModel.mps_id"
+    v-model="selectedFeeds"
   />
   <template #footer>
     <a-button type="primary" @click="showMpSelector = false">确定</a-button>

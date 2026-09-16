@@ -2,11 +2,9 @@ import http from './http'
 
 export interface Subscription {
   id: string
-  mp_id: string
   name: string
-  mp_name: string
-  mp_cover: string
-  mp_intro: string
+  cover: string
+  intro: string
   status: number
   sync_time: string
   rss_url: string

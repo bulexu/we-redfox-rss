@@ -2,8 +2,8 @@ import http from './http'
 
 export interface FilterRule {
   id: number
-  mp_id: string  // JSON字符串，存储多个公众号ID
-  mp_ids: string[]  // 解析后的公众号ID数组
+  feed_id: string  // JSON字符串，存储多个公众号ID
+  feed_ids: string[]  // 解析后的公众号ID数组
   is_global: boolean  // 是否为全局规则
   rule_name: string
   remove_ids: string[]
@@ -19,7 +19,7 @@ export interface FilterRule {
 }
 
 export interface FilterRuleCreateParams {
-  mp_id: string  // JSON字符串，存储多个公众号ID
+  feed_id: string  // JSON字符串，存储多个公众号ID
   rule_name: string
   remove_ids?: string[]
   remove_classes?: string[]
@@ -55,7 +55,7 @@ export interface FilterRuleListResult {
 }
 
 // 获取过滤规则列表
-export const getFilterRules = (params?: { mp_id?: string; limit?: number; offset?: number }) => {
+export const getFilterRules = (params?: { feed_id?: string; limit?: number; offset?: number }) => {
   return http.get<FilterRuleListResult>('/wx/filter-rules', { params })
 }
 

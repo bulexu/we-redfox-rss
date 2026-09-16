@@ -31,7 +31,7 @@
                   </span>
                   <a-typography-text strong :heading="1"><strong>{{ item.title }}</strong></a-typography-text>
                 </div>
-                <a-typography-text strong :heading="2" @click="viewArticle(item)">{{ item.mp_name || '未知公众号'
+                <a-typography-text strong :heading="2" @click="viewArticle(item)">{{ item.name || item.mp_name || '未知公众号'
                   }}</a-typography-text>
                 <a-typography-text type="secondary"> {{ item.description }}</a-typography-text>
                 <a-button type="text" @click="viewArticle(item)">
@@ -158,19 +158,21 @@ const fetchArticles = async (isLoadMore = false) => {
       page: isLoadMore ? pagination.value.current : 0,
       pageSize: pagination.value.pageSize,
       search: searchText.value,
-      mp_id: activeMpId.value
+      feed_id: activeMpId.value
     })
 
     if (isLoadMore) {
       articles.value = [...articles.value, ...(res.list || []).map(item => ({
         ...item,
-        mp_name: item.mp_name || item.account_name || '未知公众号',
+        name: item.name || item.mp_name || item.account_name || '未知公众号',
+        feed_id: item.feed_id || item.mp_id,
         url: item.url || "https://mp.weixin.qq.com/s/" + item.id
       }))]
     } else {
       articles.value = (res.list || []).map(item => ({
         ...item,
-        mp_name: item.mp_name || item.account_name || '未知公众号',
+        name: item.name || item.mp_name || item.account_name || '未知公众号',
+        feed_id: item.feed_id || item.mp_id,
         url: item.url || "https://mp.weixin.qq.com/s/" + item.id
       }))
     }
@@ -270,7 +272,7 @@ const fetchMpList = async () => {
       id: item.id || item.mp_id,
       name: item.name || item.mp_name,
       avatar: item.avatar || item.mp_cover || '',
-      mp_intro: item.mp_intro || item.mp_intro || ''
+      intro: item.intro || item.mp_intro || ''
     }))
   } catch (error) {
     console.error('获取公众号列表错误:', error)

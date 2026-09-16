@@ -132,7 +132,7 @@ const stats = ref<EnvExceptionStats>({
 const mpColumns = [
   {
     title: '公众号ID',
-    dataIndex: 'mp_id',
+    dataIndex: 'feed_id',
     width: '40%',
   },
   {
@@ -171,7 +171,7 @@ const mpTableData = computed(() => {
 
   Object.entries(mpStats).forEach(([mpId, count]) => {
     data.push({
-      mp_id: mpId,
+      feed_id: mpId,
       count: parseInt(count) || 0,
       percentage: stats.value.total > 0
         ? ((parseInt(count) / stats.value.total) * 100).toFixed(2) + '%'
@@ -209,7 +209,7 @@ const parseLog = (logString: string) => {
     return {
       url: '',
       mp_name: '',
-      mp_id: '',
+      feed_id: '',
       timestamp: '',
     }
   }

@@ -103,7 +103,7 @@ const columns = [
   { title: '名称', slotName: 'name', width: 200 },
   { title: 'App Token', dataIndex: 'app_token', width: 200, ellipsis: true, tooltip: true },
   { title: 'Table ID', dataIndex: 'table_id', width: 200, ellipsis: true, tooltip: true },
-  { title: '关联公众号', slotName: 'mp_ids', width: 80 },
+  { title: '关联公众号', slotName: 'feed_ids', width: 80 },
   { title: '最近推送', slotName: 'last_pushed', width: 200 },
   { title: '操作', slotName: 'action', width: 200, fixed: 'right' },
 ]
@@ -139,9 +139,9 @@ const showEdit = async (b: LarkBitable) => {
   formData.app_token = b.app_token
   formData.table_id = b.table_id
   formData.enabled = !!b.enabled
-  // 把后端存的 mp_ids 字符串数组转成 MpItem[] 占位,
+  // 把后端存的 feed_ids 字符串数组转成 MpItem[] 占位,
   // 打开选择器后 MpMultiSelect.parseSelected 会尝试用搜索结果补全 mp_name/cover。
-  formData.selected_mps = (b.mp_ids || []).map((id) => ({
+  formData.selected_mps = (b.feed_ids || []).map((id) => ({
     id,
     mp_name: id,
     mp_cover: '',
@@ -191,7 +191,7 @@ const collectPayload = (): CreateBitableRequest | UpdateBitableRequest => {
     name: formData.name.trim(),
     app_token: formData.app_token.trim(),
     table_id: formData.table_id.trim(),
-    mp_ids: dedup,
+    feed_ids: dedup,
     field_mapping,
     enabled: formData.enabled,
   }
@@ -282,9 +282,9 @@ const onManualPush = (b: LarkBitable) => {
   pushModalSelected.value = []
   pushModalSearch.value = ''
   showPushModal.value = true
-  // 后端 mp_id 仅支持单值过滤,所以多 mp_id 走前端过滤。
-  // 0 个 mp_id 时不做过滤,允许推送任意公众号文章(和后端 worker 行为一致)。
-  pushModalMpIds.value = Array.isArray(b.mp_ids) ? [...b.mp_ids] : []
+  // 后端 mp_id 仅支持单值过滤,所以多 feed_id 走前端过滤。
+  // 0 个 feed_id 时不做过滤,允许推送任意公众号文章(和后端 worker 行为一致)。
+  pushModalMpIds.value = Array.isArray(b.feed_ids) ? [...b.feed_ids] : []
   loadPushModalArticles(true)
 }
 
@@ -293,7 +293,7 @@ const showPushModal = ref(false)
 const pushModalBitable = ref<LarkBitable | null>(null)
 const pushModalSelected = ref<string[]>([])
 const pushModalSearch = ref('')
-const pushModalMpIds = ref<string[]>([]) // 该 bitable 关联的 mp_ids,用于客户端过滤
+const pushModalMpIds = ref<string[]>([]) // 该 bitable 关联的 feed_ids,用于客户端过滤
 const pushModalArticles = ref<Article[]>([])
 const pushModalLoading = ref(false)
 const pushModalSubmitting = ref(false)
@@ -318,11 +318,11 @@ const loadPushModalArticles = async (reset = false) => {
       has_content: true, // 没正文的 article lark worker 会跳过,提前过滤掉
     })
     // 后端 mp_id 接口只支持单值,所以过滤放在前端:
-    // 仅保留 article.mp_id 在 bitable.mp_ids 集合内的条目。
+    // 仅保留 article.feed_id 在 bitable.feed_ids 集合内的条目。
     const list: Article[] = (resp?.list || []) as Article[]
     const mpSet = new Set(pushModalMpIds.value.map((s) => String(s)))
     const filtered = mpSet.size
-      ? list.filter((a) => mpSet.has(String(a.mp_id || '')))
+      ? list.filter((a) => mpSet.has(String((a as any).feed_id || a.mp_id || '')))
       : list
     if (reset) {
       pushModalArticles.value = filtered
@@ -515,9 +515,9 @@ const statusEnabled = computed(() => larkStatus.value?.enabled ?? false)
           <strong>{{ record.name }}</strong>
           <div style="font-size: 11px; color: var(--color-text-3)">{{ record.id }}</div>
         </template>
-        <template #mp_ids="{ record }">
+        <template #feed_ids="{ record }">
           <a-tag color="arcoblue" style="margin: 1px">
-            {{ record.mp_ids?.length }}
+            {{ record.feed_ids?.length }}
           </a-tag>
         </template>
         <template #field_mapping="{ record }">
@@ -708,7 +708,7 @@ const statusEnabled = computed(() => larkStatus.value?.enabled ?? false)
             ,已按 {{ pushModalMpIds.length }} 个关联公众号过滤候选文章
           </span>
           <span v-else>
-            ,未关联任何公众号,可手动选择任意文章推送(worker 会按 article.mp_id 自动匹配)
+            ,未关联任何公众号,可手动选择任意文章推送(worker 会按 article.feed_id 自动匹配)
           </span>
         </a-alert>
 
@@ -753,7 +753,7 @@ const statusEnabled = computed(() => larkStatus.value?.enabled ?? false)
             >
               <div class="push-modal-item-title">{{ a.title || '(无标题)' }}</div>
               <div class="push-modal-item-meta">
-                <span>{{ (a as any).mp_name || '未知公众号' }}</span>
+                <span>{{ (a as any).name || (a as any).mp_name || '未知公众号' }}</span>
                 <span class="push-modal-item-id">id: {{ a.id }}</span>
                 <span v-if="a.publish_time">{{ formatArticleTime(a.publish_time) }}</span>
               </div>

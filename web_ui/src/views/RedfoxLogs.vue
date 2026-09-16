@@ -291,7 +291,7 @@ const endpointColumns = [
 ]
 
 const mpColumns = [
-  { title: '公众号', dataIndex: 'mp_id', width: '40%', ellipsis: true },
+  { title: '公众号', dataIndex: 'feed_id', width: '40%', ellipsis: true },
   { title: '次数', dataIndex: 'count', slotName: 'count', width: '20%' },
   { title: '占比', dataIndex: 'percentage', width: '20%' },
 ]
@@ -303,7 +303,7 @@ const logColumns = [
   { title: 'code', dataIndex: 'code', slotName: 'code', width: '70px' },
   { title: 'HTTP', dataIndex: 'http_status', width: '70px' },
   { title: '耗时', dataIndex: 'latency_ms', slotName: 'latency', width: '90px' },
-  { title: '公众号', dataIndex: 'mp_id', width: '200px', ellipsis: true },
+  { title: '公众号', dataIndex: 'feed_id', width: '200px', ellipsis: true },
   { title: '请求', dataIndex: 'request', slotName: 'request' },
   { title: '错误信息', dataIndex: 'error_msg', slotName: 'error_msg', width: '240px' },
 ]
@@ -389,7 +389,7 @@ const mpTableData = computed(() => {
   Object.entries(stats.value.mp_stats || {}).forEach(([mpId, count]) => {
     const c = parseInt(count) || 0
     data.push({
-      mp_id: mpId,
+      feed_id: mpId,
       count: c,
       percentage: stats.value.total > 0
         ? ((c / stats.value.total) * 100).toFixed(2) + '%'

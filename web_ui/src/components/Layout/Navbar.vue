@@ -11,7 +11,7 @@
         <template #icon><icon-wechat /></template>
         微信公众号
       </a-menu-item>
-      <a-menu-item key="platform-xhs" disabled>
+      <a-menu-item key="/xhs/feeds">
         <template #icon><icon-fire /></template>
         小红书
       </a-menu-item>
@@ -40,7 +40,7 @@ const router = useRouter()
 const route = useRoute()
 
 // 根据当前路由判断顶部菜单高亮:
-//   命中 WeChat 路径 → 「平台选择」高亮;  命中 System 路径 → 「系统管理」高亮
+//   命中 WeChat/XHS 路径 → 「平台选择」高亮;  命中 System 路径 → 「系统管理」高亮
 const systemPrefixes = [
   '/access-keys',
   '/users',
@@ -54,7 +54,7 @@ const selectedTopKeys = computed<string[]>(() => {
   if (systemPrefixes.some((p) => route.path.startsWith(p))) {
     return ['system']
   }
-  // WeChat 路径或默认 → 「平台选择」高亮
+  // WeChat/XHS 路径或默认 → 「平台选择」高亮
   return ['platform']
 })
 
@@ -68,7 +68,7 @@ const handleMenuClick = (key: string) => {
     })
     return
   }
-  // 「平台选择」下拉里只处理微信公众号 (其它 key 是 disabled,  Arco 不会触发)
+  // 「平台选择」下拉里只处理 WeChat / XHS key (其它 key 是 disabled,  Arco 不会触发)
   if (!key.startsWith('/')) return
   if (route.path === key) return
   router.push(key).catch((err) => {

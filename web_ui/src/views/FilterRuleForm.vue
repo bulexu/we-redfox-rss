@@ -23,7 +23,7 @@ const modalVisible = ref(true)
 
 // 表单数据
 const formData = ref<{
-  mps_id: any[]  // 选中的公众号数组
+  target_feed_ids: any[]  // 选中的公众号数组
   rule_name: string
   remove_ids: string
   remove_classes: string
@@ -33,7 +33,7 @@ const formData = ref<{
   remove_normal_tag: boolean
   priority: number
 }>({
-  mps_id: [],
+  target_feed_ids: [],
   rule_name: '',
   remove_ids: '',
   remove_classes: '',
@@ -60,20 +60,20 @@ const fetchRuleDetail = async (id: number) => {
   try {
     const res = await getFilterRule(id)
     const rule = res
-    // 解析 mp_id JSON 字符串
+    // 解析 feed_id JSON 字符串
     let mpIds: any[] = []
     try {
-      if (rule.mp_id) {
-        mpIds = rule.mp_id.startsWith('[')
-          ? JSON.parse(rule.mp_id)
-          : rule.mp_id.split(',').map((id: string) => ({ id: id.trim() }))
+      if (rule.feed_id) {
+        mpIds = rule.feed_id.startsWith('[')
+          ? JSON.parse(rule.feed_id)
+          : rule.feed_id.split(',').map((id: string) => ({ id: id.trim() }))
       }
     } catch {
-      mpIds = rule.mp_id ? [{ id: rule.mp_id }] : []
+      mpIds = rule.feed_id ? [{ id: rule.feed_id }] : []
     }
 
     formData.value = {
-      mps_id: mpIds,
+      target_feed_ids: mpIds,
       rule_name: rule.rule_name,
       remove_ids: (rule.remove_ids || []).join('\n'),
       remove_classes: (rule.remove_classes || []).join('\n'),
@@ -108,11 +108,11 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     // 提取公众号ID数组并转为JSON字符串，如果为空则传空数组
-    const mpIdsArray = formData.value.mps_id.map((mp: any) => mp.id?.toString() || mp.toString())
+    const mpIdsArray = formData.value.target_feed_ids.map((mp: any) => mp.id?.toString() || mp.toString())
     const mpIdJson = mpIdsArray.length > 0 ? JSON.stringify(mpIdsArray) : '[]'
 
     const data: FilterRuleCreateParams | FilterRuleUpdateParams = {
-      mp_id: mpIdJson,
+      feed_id: mpIdJson,
       rule_name: formData.value.rule_name.trim(),
       remove_ids: formData.value.remove_ids
         .split('\n')
@@ -160,7 +160,7 @@ onMounted(async () => {
     fetchRuleDetail(Number(route.params.id))
   } else if (route.query.mp_id) {
     // 从URL参数获取预选公众号
-    formData.value.mps_id = [{ id: route.query.mp_id as string }]
+    formData.value.target_feed_ids = [{ id: route.query.mp_id as string }]
   }
 })
 </script>
@@ -300,7 +300,7 @@ onMounted(async () => {
     >
       <MpMultiSelect
         ref="mpSelectorRef"
-        v-model="formData.mps_id"
+        v-model="formData.target_feed_ids"
       />
       <template #footer>
         <a-button type="primary" @click="showMpSelector = false">确定</a-button>

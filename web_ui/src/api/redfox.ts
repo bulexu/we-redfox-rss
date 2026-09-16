@@ -5,7 +5,7 @@ export interface RedfoxLogEntry {
   code: number
   success: boolean
   latency_ms: number
-  mp_id: string
+  feed_id: string
   request: Record<string, any>
   error_msg: string
   http_status: number

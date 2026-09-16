@@ -59,8 +59,8 @@
                       strong
                       :heading="2"
                       style="color: rgb(var(--primary-6)); cursor: pointer"
-                      @click.stop="handleMpClick(item.mp_id)"
-                    >{{ item.mp_name || '未知公众号' }}</a-typography-text>
+                      @click.stop="handleMpClick(item.feed_id || item.mp_id)"
+                    >{{ item.name || item.mp_name || '未知公众号' }}</a-typography-text>
                     <a-typography-text type="secondary"> {{ item.description }}</a-typography-text>
                     <a-typography-text type="secondary" strong> {{ formatDateTime(item.created_at) }}</a-typography-text>
                   </template>
@@ -246,23 +246,25 @@ const fetchArticles = async (isLoadMore = false) => {
       page: isLoadMore ? pagination.value.current : 0,
       pageSize: pagination.value.pageSize,
       search: searchText.value,
-      mp_id: activeMpId.value
+      feed_id: activeMpId.value
     })
 
     if (isLoadMore) {
       articles.value = [...articles.value, ...(res.list || []).map(item => ({
         ...item,
-        mp_name: item.mp_name || item.account_name || '未知公众号',
+        name: item.name || item.mp_name || item.account_name || '未知公众号',
+        feed_id: item.feed_id || item.mp_id,
         url: item.url || "https://mp.weixin.qq.com/s/" + item.id
       }))]
     } else {
       articles.value = (res.list || []).map(item => ({
         ...item,
-        mp_name: item.mp_name || item.account_name || '未知公众号',
+        name: item.name || item.mp_name || item.account_name || '未知公众号',
+        feed_id: item.feed_id || item.mp_id,
         url: item.url || "https://mp.weixin.qq.com/s/" + item.id
       }))
     }
-    
+
     pagination.value.total = res.total || 0
     hasMore.value = res.list && res.list.length >= pagination.value.pageSize
     if (isLoadMore) {
@@ -417,7 +419,7 @@ const fetchMpList = async (isLoadMore = false) => {
       id: item.id || item.mp_id,
       name: item.name || item.mp_name,
       avatar: item.avatar || item.mp_cover || '',
-      mp_intro: item.mp_intro || item.mp_intro || '',
+      intro: item.intro || item.mp_intro || '',
       status: item.status ?? 1
     }))
 
@@ -431,7 +433,7 @@ const fetchMpList = async (isLoadMore = false) => {
           id: '',
           name: '全部',
           avatar: '/static/logo.svg',
-          mp_intro: '显示所有公众号文章',
+          intro: '显示所有公众号文章',
           status: 1
         })
       }

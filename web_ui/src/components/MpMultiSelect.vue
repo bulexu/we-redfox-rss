@@ -50,10 +50,11 @@ const fetchMps = async (reset = true) => {
     })
 
     // 将 API 返回的数据格式转换为组件内部使用的格式
+    // 后端 searchMps 返回 Feed 字段 (id/name/cover),兼容旧字段 (mp_id/mp_name/mp_cover)
     const mappedList = res.list.map((item: any) => ({
-      id: item.mp_id || item.id,
-      mp_name: item.mp_name,
-      mp_cover: item.avatar || item.mp_cover
+      id: item.id || item.mp_id,
+      mp_name: item.name || item.mp_name,
+      mp_cover: item.cover || item.mp_cover || item.avatar
     }))
 
     // 添加新加载的数据到列表，避免覆盖已有数据

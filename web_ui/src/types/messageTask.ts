@@ -6,7 +6,7 @@ export interface MessageTask {
   web_hook_url: string
   headers?: string
   cookies?: string
-  mps_id: any // JSON类型
+  target_feed_ids: any // JSON类型
   status: number
   cron_exp?: string
   created_at?: string
@@ -20,7 +20,7 @@ export interface MessageTaskCreate {
   web_hook_url: string
   headers?: string
   cookies?: string
-  mps_id: any
+  target_feed_ids: any
   status?: number
   cron_exp?: string
 }
@@ -32,7 +32,7 @@ export interface MessageTaskUpdate {
   web_hook_url?: string
   headers?: string
   cookies?: string
-  mps_id?: any
+  target_feed_ids?: any
   status?: number
   cron_exp?: string
 }

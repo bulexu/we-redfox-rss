@@ -38,12 +38,12 @@ const fetchMpList = async () => {
 const fetchRuleList = async () => {
   loading.value = true
   try {
-    const params: { mp_id?: string; limit: number; offset: number } = {
+    const params: { feed_id?: string; limit: number; offset: number } = {
       limit: pagination.value.pageSize,
       offset: (pagination.value.current - 1) * pagination.value.pageSize
     }
     if (selectedMpId.value) {
-      params.mp_id = selectedMpId.value
+      params.feed_id = selectedMpId.value
     }
     const res = await getFilterRules(params)
     ruleList.value = res.list || []
@@ -63,7 +63,7 @@ const getMpNames = (mpIds: string[] | string) => {
   if (ids.length === 0) return '全局规则'
   const names = ids.map(id => {
     const mp = mpList.value.find(m => m.id === id)
-    return mp?.mp_name || id
+    return mp?.name || id
   })
   return names.join(', ')
 }
@@ -74,7 +74,7 @@ const getFirstMpName = (mpIds: string[] | string) => {
   const ids = Array.isArray(mpIds) ? mpIds : [mpIds]
   if (ids.length === 0) return '全'
   const mp = mpList.value.find(m => m.id === ids[0])
-  return mp?.mp_name?.charAt(0) || ids[0]?.charAt(0) || '?'
+  return mp?.name?.charAt(0) || ids[0]?.charAt(0) || '?'
 }
 
 // 处理筛选变化
@@ -94,12 +94,12 @@ const handleLoadMore = async () => {
   loading.value = true
   try {
     pagination.value.current += 1
-    const params: { mp_id?: string; limit: number; offset: number } = {
+    const params: { feed_id?: string; limit: number; offset: number } = {
       limit: pagination.value.pageSize,
       offset: (pagination.value.current - 1) * pagination.value.pageSize
     }
     if (selectedMpId.value) {
-      params.mp_id = selectedMpId.value
+      params.feed_id = selectedMpId.value
     }
     const res = await getFilterRules(params)
     ruleList.value = [...ruleList.value, ...res.list]
@@ -163,7 +163,7 @@ const previewRule = (rule: FilterRule) => {
 
 onMounted(() => {
   fetchMpList()
-  // 从路由参数获取mp_id
+  // 从路由参数获取 mp_id
   if (route.query.mp_id) {
     selectedMpId.value = route.query.mp_id as string
   }
@@ -188,7 +188,7 @@ onMounted(() => {
             v-for="mp in mpList"
             :key="mp.id"
             :value="mp.id"
-            :label="mp.mp_name"
+            :label="mp.name"
           />
         </a-select>
         <a-button type="primary" @click="handleAdd">
@@ -212,10 +212,10 @@ onMounted(() => {
               <template #cell="{ record }">
                 <div class="mp-info">
                   <a-avatar :size="24" :style="{ backgroundColor: '#3370ff' }">
-                    {{ getFirstMpName(record.mp_ids) }}
+                    {{ getFirstMpName(record.feed_ids) }}
                   </a-avatar>
-                  <a-tooltip :content="getMpNames(record.mp_ids)">
-                    <span class="mp-name">{{ getMpNames(record.mp_ids) }}</span>
+                  <a-tooltip :content="getMpNames(record.feed_ids)">
+                    <span class="mp-name">{{ getMpNames(record.feed_ids) }}</span>
                   </a-tooltip>
                 </div>
               </template>
@@ -269,7 +269,7 @@ onMounted(() => {
               </template>
               <template #description>
                 <div class="mobile-desc">
-                  <div>公众号: {{ getMpNames(item.mp_ids) }}</div>
+                  <div>公众号: {{ getMpNames(item.feed_ids) }}</div>
                   <div class="rule-preview">{{ previewRule(item) }}</div>
                   <div>优先级: {{ item.priority }}</div>
                 </div>

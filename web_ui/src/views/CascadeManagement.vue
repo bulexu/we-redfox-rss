@@ -48,7 +48,7 @@ const allocationColumns = [
 ]
 
 const feedStatusColumns = [
-  { title: '公众号名称', dataIndex: 'mp_name', ellipsis: true },
+  { title: '公众号名称', dataIndex: 'name', ellipsis: true },
   { title: '文章数', dataIndex: 'article_count', width: 80 },
   { title: '更新状态', slotName: 'update_status', width: 100 },
   { title: '最近文章', slotName: 'latest_article_time', width: 160 },

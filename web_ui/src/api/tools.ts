@@ -1,8 +1,13 @@
 import http from './http'
 
+// 兼容新旧参数名 (mp_id 是后端约定,feed_id 是前端约定)
+const resolveFeedId = (params: any): string => {
+  return params?.feed_id ?? params?.mp_id ?? ''
+}
+
 export const exportArticles = (params:any) => {
     const requestData = {
-      mp_id: params.mp_id,
+      mp_id: resolveFeedId(params),
       doc_id: params.scope === 'selected' ? params.ids : [],
       page_size: params.limit||10,
       page_count: params.page_count || 1,
@@ -26,13 +31,13 @@ export const exportArticles = (params:any) => {
 }
 export const getExportRecords = (params:any) => {
     const requestData = {
-      mp_id: params.mp_id,
+      mp_id: resolveFeedId(params),
     };
   return http.get<{code: number, data: string}>('/wx/tools/export/list', {params:requestData})
 }
 export const DeleteExportRecords = (params:any) => {
     const requestData = {
-      mp_id: params.mp_id||"",
+      mp_id: resolveFeedId(params),
       filename: params.filename,
     };
   return http.delete<{code: number, data: string}>('/wx/tools/export/delete', {data:requestData})

@@ -5,7 +5,7 @@ export interface LarkBitable {
   name: string
   app_token: string
   table_id: string
-  mp_ids: string[]
+  feed_ids: string[]
   field_mapping: Record<string, string>
   enabled: boolean
   last_pushed_at: number | null
@@ -26,7 +26,7 @@ export interface CreateBitableRequest {
   name: string
   app_token: string
   table_id: string
-  mp_ids: string[]
+  feed_ids: string[]
   field_mapping: Record<string, string>
   enabled: boolean
 }
@@ -35,7 +35,7 @@ export interface UpdateBitableRequest {
   name?: string
   app_token?: string
   table_id?: string
-  mp_ids?: string[]
+  feed_ids?: string[]
   field_mapping?: Record<string, string>
   enabled?: boolean
 }
@@ -54,7 +54,7 @@ export interface TestBitableResp {
   fields?: LarkFieldInfo[]
 }
 
-export const listBitables = (params?: { enabled?: boolean; mp_id?: string; limit?: number; offset?: number }) => {
+export const listBitables = (params?: { enabled?: boolean; feed_id?: string; limit?: number; offset?: number }) => {
   return http.get<LarkBitableListResp>('/wx/lark/bitables', { params })
 }
 

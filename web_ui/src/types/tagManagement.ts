@@ -4,6 +4,7 @@ export interface Tag {
   cover?: string | null
   intro?: string | null
   status: number
+  feed_ids?: string  // JSON字符串
   created_at: string
   updated_at: string
 }
@@ -13,4 +14,5 @@ export interface TagCreate {
   cover?: string | null
   intro?: string | null
   status?: number
+  feed_ids?: string  // JSON字符串
 }

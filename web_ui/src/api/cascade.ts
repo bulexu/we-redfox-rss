@@ -152,8 +152,8 @@ export const dispatchTask = (taskId?: string) => {
 
 export interface FeedStatus {
   id: string
-  mp_name: string
-  mp_cover?: string
+  name: string
+  cover?: string
   status: number
   article_count: number
   latest_article_time?: string

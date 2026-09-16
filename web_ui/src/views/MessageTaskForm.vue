@@ -27,7 +27,7 @@ const formData = ref<MessageTaskCreate>({
   web_hook_url: '',
   headers: '',
   cookies: '',
-  mps_id: [],
+  target_feed_ids: [],
   status: 1,
   cron_exp: '*/5 * * * *'
 })
@@ -43,7 +43,7 @@ const fetchTaskDetail = async (id: string) => {
       web_hook_url: res.web_hook_url || '',
       headers: res.headers || '',
       cookies: res.cookies || '',
-      mps_id: res.mps_id ? JSON.parse(res.mps_id) : [],
+      target_feed_ids: res.target_feed_ids ? JSON.parse(res.target_feed_ids) : (res.mps_id ? JSON.parse(res.mps_id) : []),
       status: res.status || 0,
       cron_exp: res.cron_exp || '*/5 * * * *'
     }
@@ -53,7 +53,7 @@ const fetchTaskDetail = async (id: string) => {
         cronPickerRef.value.parseExpression(formData.value.cron_exp)
       }
       if (mpSelectorRef.value) {
-        mpSelectorRef.value.parseSelected(formData.value.mps_id)
+        mpSelectorRef.value.parseSelected(formData.value.target_feed_ids)
       }
     })
   } finally {
@@ -64,9 +64,9 @@ const fetchTaskDetail = async (id: string) => {
 const handleSubmit = async () => {
   try {
     // 表单验证
-  
+
   loading.value = true
-  
+
   // 表单验证
   try {
     await formRef.value.validate()
@@ -78,11 +78,13 @@ const handleSubmit = async () => {
 
 
     loading.value = true
-    // 将mps_id转换为字符串
-    const submitData = {
+    // 将target_feed_ids转换为字符串
+    // 后端 Pydantic 仍使用 mps_id 作为字段名,前端用 target_feed_ids 表达
+    const submitData: any = {
       ...formData.value,
-      mps_id: JSON.stringify(formData.value.mps_id)
+      mps_id: JSON.stringify(formData.value.target_feed_ids)
     }
+    delete submitData.target_feed_ids
     
     if (isEditMode.value && taskId.value) {
       await updateMessageTask(taskId.value, submitData)
@@ -192,10 +194,10 @@ onMounted(() => {
               </a-space>
             </a-form-item>
 
-            <a-form-item label="公众号" field="mps_id">
+            <a-form-item label="公众号" field="target_feed_ids">
               <a-space>
                 <a-input
-                  :model-value="(formData.mps_id||[]).map((mp: any) => mp.id?.toString() || mp.toString()).join(',')"
+                  :model-value="(formData.target_feed_ids||[]).map((mp: any) => mp.id?.toString() || mp.toString()).join(',')"
                   placeholder="请选择公众号，留空则对所有公众号生效"
                   readonly
                   style="width: 300px"
@@ -271,9 +273,9 @@ onMounted(() => {
         :footer="false"
         width="800px"
       >
-        <MpMultiSelect 
+        <MpMultiSelect
           ref="mpSelectorRef"
-          v-model="formData.mps_id"
+          v-model="formData.target_feed_ids"
         />
         <template #footer>
           <a-button type="primary" @click="showMpSelector = false">确定</a-button>

@@ -244,9 +244,36 @@ const routes = [
         path: 'users',
         name: 'UserManagement',
         component: () => import('@/views/UserManagement.vue'),
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['admin'] 
+          permissions: ['admin']
+        }
+      },
+      {
+        path: 'xhs/feeds',
+        name: 'XhsFeeds',
+        component: () => import('@/views/XhsFeeds.vue'),
+        meta: {
+          requiresAuth: true,
+          permissions: ['xhs:manage']
+        }
+      },
+      {
+        path: 'xhs/subscriptions',
+        name: 'XhsSubscriptions',
+        component: () => import('@/views/XhsSubscriptions.vue'),
+        meta: {
+          requiresAuth: true,
+          permissions: ['xhs:manage']
+        }
+      },
+      {
+        path: 'xhs/articles',
+        name: 'XhsArticles',
+        component: () => import('@/views/XhsArticles.vue'),
+        meta: {
+          requiresAuth: true,
+          permissions: ['xhs:manage']
         }
       },
     ]

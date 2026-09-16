@@ -33,6 +33,7 @@ import {
   IconSafe,
   IconSettings,
   IconInfoCircle,
+  IconPlus,
 } from '@arco-design/web-vue/es/icon'
 
 interface SubItem {
@@ -52,6 +53,13 @@ const wechatItems: SubItem[] = [
   { key: '/cascade/feed-status', label: '信源状态', icon: IconStorage },
   { key: '/cascade', label: '级联管理', icon: IconShareExternal },
   { key: '/env-exception', label: '异常统计', icon: IconExclamationCircle },
+]
+
+// 小红书 (XHS) 二级菜单
+const xhsItems: SubItem[] = [
+  { key: '/xhs/feeds', label: '订阅管理', icon: IconHome },
+  { key: '/xhs/subscriptions', label: '添加订阅', icon: IconPlus },
+  { key: '/xhs/articles', label: '笔记浏览', icon: IconList },
 ]
 
 // 系统管理的二级菜单
@@ -88,6 +96,9 @@ const route = useRoute()
 const items = computed<SubItem[]>(() => {
   if (systemPrefixes.some((p) => route.path.startsWith(p))) {
     return systemItems
+  }
+  if (route.path.startsWith('/xhs')) {
+    return xhsItems
   }
   return wechatItems
 })

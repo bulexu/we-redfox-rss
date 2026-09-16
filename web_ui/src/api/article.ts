@@ -16,7 +16,7 @@ export interface Article {
   id: number | string
   title: string
   content: string
-  mp_name: string
+  name: string
   publish_time: string
   status: number
   link: string
@@ -31,7 +31,7 @@ export interface Article {
  * @property limit 每页数量
  * @property search 搜索关键词
  * @property status 文章状态
- * @property mp_id 公众号ID
+ * @property feed_id 公众号ID
  */
 export interface ArticleListParams {
   page?: number
@@ -40,7 +40,7 @@ export interface ArticleListParams {
   limit?: number
   search?: string
   status?: number
-  mp_id?: string
+  feed_id?: string
   has_content?: boolean
   only_favorite?: boolean
 }
@@ -67,7 +67,8 @@ export const getArticles = (params: ArticleListParams) => {
     limit: params.pageSize || 10,
     search: params.search,
     status: params.status,
-    mp_id: params.mp_id,
+    // 后端仍使用 mp_id 作为查询参数,前端用 feed_id 表达
+    mp_id: params.feed_id,
     has_content: params.has_content,
     only_favorite: params.only_favorite
   }
@@ -167,7 +168,7 @@ export const ClearDuplicateArticle = (id?: number | string) => {
  */
 export interface CleanOldArticlesParams {
   days?: number  // 清理多少天前的文章，默认3天
-  mp_id?: string  // 公众号ID，不指定则清理所有公众号
+  feed_id?: string  // 公众号ID，不指定则清理所有公众号
   dry_run?: boolean  // 是否只预览不实际删除
 }
 
@@ -185,13 +186,13 @@ export interface CleanOldArticlesResult {
     preview?: Array<{
       id: string
       title: string
-      mp_id: string
+      feed_id: string
       publish_time: number
       publish_date: string
     }>
     dry_run?: boolean
     days?: number
-    mp_id?: string
+    feed_id?: string
     physical_delete?: boolean
   }
 }
@@ -205,7 +206,8 @@ export const cleanOldArticles = (params: CleanOldArticlesParams = {}) => {
   return http.delete<CleanOldArticlesResult>(`/wx/articles/clean-old`, {
     params: {
       days: params.days || 3,
-      mp_id: params.mp_id,
+      // 后端仍使用 mp_id 作为查询参数,前端用 feed_id 表达
+      mp_id: params.feed_id,
       dry_run: params.dry_run || false
     }
   })

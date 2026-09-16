@@ -6,7 +6,7 @@ import { Message } from '@arco-design/web-vue'
 import { IconRefresh, IconUser } from '@arco-design/web-vue/es/icon'
 
 const feedStatusColumns = [
-  { title: '公众号', slotName: 'mp_info', dataIndex: 'mp_name', ellipsis: true, sortable: { sortDirections: ['ascend', 'descend'] } },
+  { title: '公众号', slotName: 'mp_info', dataIndex: 'name', ellipsis: true, sortable: { sortDirections: ['ascend', 'descend'] } },
   { title: '文章数', dataIndex: 'article_count', width: 100, sortable: { sortDirections: ['ascend', 'descend'] } },
   { title: '更新状态', slotName: 'update_status', dataIndex: 'update_status', width: 110, sortable: { sortDirections: ['ascend', 'descend'] } },
   { title: '最近文章', slotName: 'latest_article_time', dataIndex: 'latest_article_time', width: 160, sortable: { sortDirections: ['ascend', 'descend'] } },
@@ -157,15 +157,15 @@ onMounted(() => {
         <template #mp_info="{ record }">
           <div style="display: flex; align-items: center; gap: 10px;">
             <img
-              v-if="record.mp_cover"
-              :src="record.mp_cover"
-              :alt="record.mp_name"
+              v-if="record.cover"
+              :src="record.cover"
+              :alt="record.name"
               style="width: 32px; height: 32px; border-radius: 4px; object-fit: cover;"
             />
             <span v-else style="width: 32px; height: 32px; border-radius: 4px; background: #f2f3f5; display: flex; align-items: center; justify-content: center;">
               <icon-user style="color: #c9cdd4;" />
             </span>
-            <span>{{ record.mp_name }}</span>
+            <span>{{ record.name }}</span>
           </div>
         </template>
 

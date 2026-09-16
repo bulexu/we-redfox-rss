@@ -1,5 +1,5 @@
 <template>
-      <ExportRecords :mp_id="mp_id" />
+      <ExportRecords :feed_id="feed_id" />
 </template>
 
 <script setup>
@@ -7,7 +7,7 @@ import { onBeforeUnmount, onMounted } from 'vue'
 import { ref } from 'vue'
 import { computed } from 'vue'
 import ExportRecords from '@/components/ExportRecords.vue'
-const mp_id = ref('')
+const feed_id = ref('')
 </script>
 
 <style scoped>

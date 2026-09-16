@@ -17,7 +17,7 @@
      - 新 note 入库
 
 用法 (项目根目录):
-    python -m core.xhs.tests
+    python -m core.redfox.xhs.tests
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ _install_redfox_stub()
 
 
 def _ensure_redfox_stub() -> None:
-    """redfox 包未安装时塞个 stub,  让 core.xhs 导入不挂。"""
+    """redfox 包未安装时塞个 stub,  让 core.redfox.xhs 导入不挂。"""
     import types
     if "redfox" in sys.modules:
         return
@@ -114,7 +114,7 @@ def _cleanup(session, feed_id: str) -> None:
 
 
 def test_normalize() -> bool:
-    from core.xhs.sync import _normalize_note
+    from core.redfox.xhs.sync import _normalize_note
     notes = _make_fake_notes("kw1", 1, datetime(2024, 6, 1, 12, 0, 0))
     n = _normalize_note(notes[0])
     assert n["id"] == "kw1_0"
@@ -136,7 +136,7 @@ def test_normalize() -> bool:
 
 
 def test_split_build_roundtrip() -> bool:
-    from core.xhs.sync import _split_feed_id, build_feed_id
+    from core.redfox.xhs.sync import _split_feed_id, build_feed_id
     for kind, target in [("keyword", "口红"), ("account", "5e3a8c9d")]:
         fid = build_feed_id(kind, target)
         k, t = _split_feed_id(fid)
@@ -151,7 +151,7 @@ def test_upsert_metrics_only() -> bool:
     from core.db import DB
     from core.models.feed import Feed as _Feed
     from core.models.article import Article
-    from core.xhs.sync import _upsert_articles, _normalize_note, build_feed_id
+    from core.redfox.xhs.sync import _upsert_articles, _normalize_note, build_feed_id
 
     feed_id = build_feed_id("keyword", "test_upsert")
     session = DB.get_session()
@@ -223,7 +223,7 @@ def test_upsert_metrics_only() -> bool:
 
 
 def _normalize_note_many(work_ids, base_pt):
-    from core.xhs.sync import _normalize_note
+    from core.redfox.xhs.sync import _normalize_note
     notes = []
     for i, wid in enumerate(work_ids):
         notes.append({
@@ -251,11 +251,11 @@ def test_do_job_xhs_watermark() -> bool:
     替换 client 层的 iter_search_articles 为本地 stub。
     """
     _ensure_redfox_stub()
-    import core.xhs.sync as sync_mod
+    import core.redfox.xhs.sync as sync_mod
     from core.db import DB
     from core.models.article import Article
     from core.models.feed import Feed as _Feed
-    from core.xhs import do_job_xhs, build_feed_id
+    from core.redfox.xhs import do_job_xhs, build_feed_id
 
     feed_id = build_feed_id("keyword", "test_watermark")
     session = DB.get_session()
@@ -306,7 +306,7 @@ def test_do_job_xhs_watermark() -> bool:
 
 
 def main() -> int:
-    print("=== core.xhs.tests ===")
+    print("=== core.redfox.xhs.tests ===")
     failures = []
     for name, fn in [
         ("normalize", test_normalize),

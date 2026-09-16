@@ -17,7 +17,7 @@ from core.auth import get_current_user_or_ak
 from core.db import DB
 from core.models.feed import Feed
 from core.print import print_error, print_info, print_warning
-from core.xhs import (
+from core.redfox.xhs import (
     XHS_KW_PREFIX,
     XHS_U_PREFIX,
     build_feed_id,
@@ -345,7 +345,7 @@ async def search_xhs_users(
 ):
     """账号订阅前置:  输入关键词查找 userId,  选中后创建 XHS_U_<userId> 订阅。"""
     try:
-        from core.xhs import search_users
+        from core.redfox.xhs import search_users
         data = search_users(keyword=req.keyword, offset=req.offset)
         users = data.get("list") or data.get("users") or []
         return success_response({

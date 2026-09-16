@@ -34,8 +34,8 @@ def test(info:str):
 from core.models.message_task import MessageTask
 # from core.queue import TaskQueue
 from .webhook import web_hook
-from core.xhs import do_job_xhs
-from core.xhs.sync import XHS_KW_PREFIX, XHS_U_PREFIX
+from core.redfox.xhs import do_job_xhs
+from core.redfox.xhs.sync import XHS_KW_PREFIX, XHS_U_PREFIX
 interval=int(cfg.get("interval",60)) # 兼容历史配置;get_Articles 已不再读取
 def do_job(mp=None,task:MessageTask=None,isTest=False):
         """执行单个公众号的采集任务"""

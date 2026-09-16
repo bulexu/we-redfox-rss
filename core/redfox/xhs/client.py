@@ -1,202 +1,49 @@
-"""小红书 redfox 接口薄封装。
+"""小红书 (XHS) redfox 接口薄封装。
 
 对应 redfox SDK ``client.xiaohongshu.*`` 命名空间:
   * ``search_articles(keyword, offset, sort_type)`` —— 关键词搜索笔记
   * ``search_users(keyword, offset)``             —— 关键词搜索用户
   * ``get_user_works(user_id, offset, sort_type)`` —— 单用户作品列表
 
-模块对外只暴露 ``search_articles`` / ``search_users`` / ``get_user_works``
-三个便捷函数,  内部按线程懒缓存 ``_XhsClient``,  与
-``core/redfox/client.py`` 一致:  httpx.Client 非线程安全,  需要每个
-工作线程独立持有。
+业务方法挂在 ``XhsClient`` (继承 ``RedfoxClient``) 上;  SDK 初始化 /
+调用日志 / 异常归一 / 线程缓存都来自 ``core.redfox.base`` 共性层。
+本模块只添加 XHS 平台特定方法 + ``parse_work_publish_time`` 工具。
+
+模块对外通过 ``core.redfox.xhs`` 暴露模块级便捷函数,  内部按线程
+懒缓存 ``XhsClient``,  httpx.Client 非线程安全,  需要每个工作线程
+独立持有,  缓存机制见 ``core.redfox.base._get_client_for``。
 """
 from __future__ import annotations
 
-import os
-import threading
-import time
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable
 
-from redfox import RedFoxClient
-from redfox.exceptions import (
-    RedFoxAPIError,
-    RedFoxAuthError,
-    RedFoxRateLimitError,
+from ..base import (
+    PAGE_SIZE,
+    RedfoxClient,
+    RedfoxError,
+    _get_client_for,
 )
 
-from core.config import cfg
-from core.print import print_error, print_warning
-from core.redis_client import record_redfox_call
 
 # ---------------------------------------------------------------------------
-# 与 wechat 命名空间对称: SDK 错误统一归一为 ``RedfoxError``
+# 模块级常量 (XHS 平台路径)
 # ---------------------------------------------------------------------------
-RedfoxError = RedFoxAPIError
 
-DEFAULT_BASE_URL = "https://redfox.hk"
 SEARCH_ARTICLES_PATH = "/story/api/xhsUser/searchArticle"
 SEARCH_USERS_PATH = "/story/api/xhsUser/searchUser"
 GET_USER_WORKS_PATH = "/story/api/xhsUser/getUserWorks"
 
-SUCCESS_CODE = 2000
-PAGE_SIZE = 20  # XHS 单页固定 20 条, 与 wechat 一致
 
+# ---------------------------------------------------------------------------
+# XHS 平台客户端
+# ---------------------------------------------------------------------------
 
-class _XhsClient:
-    """XHS redfox 接口薄封装。
+class XhsClient(RedfoxClient):
+    """小红书 redfox 接口客户端 (继承 ``RedfoxClient`` 共性层)。
 
-    构造时从 ``config.yaml`` 的 ``redfox.api_key`` / ``redfox.base_url`` /
-    ``redfox.timeout`` 读取,  缺省回落到环境变量。
+    只添加小红书特有业务方法;  日志 / 异常 / 计时 / 线程缓存都复用基类。
     """
-
-    def __init__(
-        self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        timeout: Optional[int] = None,
-    ):
-        cfg_key = cfg.get("redfox.api_key", "") if cfg else ""
-        cfg_url = cfg.get("redfox.base_url", "") if cfg else ""
-        cfg_timeout = cfg.get("redfox.timeout", 15) if cfg else 15
-
-        self._api_key = (
-            api_key
-            or cfg_key
-            or os.getenv("REDFOX_API_KEY", "")
-        )
-        self._base_url = (
-            base_url
-            or cfg_url
-            or os.getenv("REDFOX_BASE_URL", "")
-            or DEFAULT_BASE_URL
-        )
-        self._timeout = timeout or cfg_timeout or 15
-
-        if not self._api_key:
-            raise RedfoxError(
-                "REDFOX_API_KEY 未配置,  请在环境变量或 config.yaml 的 "
-                "redfox.api_key 中设置"
-            )
-
-        self._sdk = RedFoxClient(
-            api_key=self._api_key,
-            base_url=self._base_url,
-            timeout=int(self._timeout),
-        )
-
-    # ------------------------------------------------------------------
-    # 日志归一
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _extract_feed_id(payload: Dict[str, Any]) -> str:
-        """从请求参数里提取用于日志归因的 feed_id。"""
-        if not isinstance(payload, dict):
-            return ""
-        for k in ("keyword", "userId", "account"):
-            v = payload.get(k)
-            if v:
-                return str(v)[:128]
-        return ""
-
-    def _record_call(
-        self,
-        endpoint: str,
-        success: bool,
-        latency_ms: int,
-        feed_id: str = "",
-        request: Optional[Dict[str, Any]] = None,
-        error_msg: str = "",
-        code: int = 0,
-        http_status: int = 0,
-    ) -> None:
-        try:
-            record_redfox_call(
-                endpoint=endpoint,
-                code=int(code or 0),
-                success=success,
-                latency_ms=int(latency_ms or 0),
-                feed_id=feed_id,
-                request=request or {},
-                error_msg=error_msg,
-                http_status=int(http_status or 0),
-            )
-        except Exception as exc:  # noqa: BLE001
-            print_warning(f"记录 redfox XHS 调用日志失败: {exc}")
-
-    def _sdk_call(
-        self,
-        endpoint: str,
-        request_payload: Dict[str, Any],
-        sdk_op,
-    ) -> Dict[str, Any]:
-        started = time.time()
-        feed_id = self._extract_feed_id(request_payload)
-        try:
-            data = sdk_op()
-        except RedFoxAuthError as e:
-            latency = int((time.time() - started) * 1000)
-            self._record_call(
-                endpoint=endpoint,
-                success=False,
-                latency_ms=latency,
-                feed_id=feed_id,
-                request=request_payload,
-                error_msg=f"auth: {e}",
-                code=int(getattr(e, "code", 0) or 0),
-                http_status=401,
-            )
-            raise RedfoxError(f"Redfox 鉴权失败: {e}") from e
-        except RedFoxRateLimitError as e:
-            latency = int((time.time() - started) * 1000)
-            self._record_call(
-                endpoint=endpoint,
-                success=False,
-                latency_ms=latency,
-                feed_id=feed_id,
-                request=request_payload,
-                error_msg=f"rate_limit: {e}",
-                code=int(getattr(e, "code", 0) or 0),
-                http_status=429,
-            )
-            raise RedfoxError(f"Redfox 频率限制: {e}") from e
-        except RedFoxAPIError as e:
-            latency = int((time.time() - started) * 1000)
-            self._record_call(
-                endpoint=endpoint,
-                success=False,
-                latency_ms=latency,
-                feed_id=feed_id,
-                request=request_payload,
-                error_msg=str(e),
-                code=int(getattr(e, "code", 0) or 0),
-            )
-            raise RedfoxError(f"Redfox 业务错误: {e}") from e
-        except Exception as e:  # noqa: BLE001
-            latency = int((time.time() - started) * 1000)
-            print_error(f"Redfox XHS 调用异常: {e}")
-            self._record_call(
-                endpoint=endpoint,
-                success=False,
-                latency_ms=latency,
-                feed_id=feed_id,
-                request=request_payload,
-                error_msg=f"exception: {e}",
-            )
-            raise RedfoxError(f"Redfox XHS 调用异常: {e}") from e
-
-        latency = int((time.time() - started) * 1000)
-        data_dict = data if isinstance(data, dict) else {}
-        self._record_call(
-            endpoint=endpoint,
-            success=True,
-            latency_ms=latency,
-            feed_id=feed_id,
-            request=request_payload,
-            code=SUCCESS_CODE,
-        )
-        return data_dict
 
     # ------------------------------------------------------------------
     # 业务方法
@@ -242,7 +89,7 @@ class _XhsClient:
         keyword: str = "",
         max_pages: int = 5,
         sort_type: str = "2",
-        page_size: int = 20,
+        page_size: int = PAGE_SIZE,
     ) -> Iterable[Dict[str, Any]]:
         """按页迭代关键词搜索结果。
 
@@ -250,7 +97,7 @@ class _XhsClient:
         或达到 ``max_pages`` / ``max_count`` 上限。
         """
         if page_size <= 0:
-            page_size = 20
+            page_size = PAGE_SIZE
         for page in range(max(1, int(max_pages))):
             data = self.search_articles(
                 keyword=keyword,
@@ -327,11 +174,11 @@ class _XhsClient:
         user_id: str = "",
         max_pages: int = 5,
         sort_type: str = "2",
-        page_size: int = 20,
+        page_size: int = PAGE_SIZE,
     ) -> Iterable[Dict[str, Any]]:
         """按页迭代单用户作品列表。"""
         if page_size <= 0:
-            page_size = 20
+            page_size = PAGE_SIZE
         for page in range(max(1, int(max_pages))):
             data = self.get_user_works(
                 user_id=user_id,
@@ -348,40 +195,12 @@ class _XhsClient:
 
 
 # ---------------------------------------------------------------------------
-# 线程局部客户端缓存 (与 core.redfox.client 一致)
-# ---------------------------------------------------------------------------
-
-_local_clients: dict[int, "_XhsClient"] = {}
-_clients_lock = threading.Lock()
-
-
-def _get_default_client() -> _XhsClient:
-    tid = threading.get_ident()
-    client = _local_clients.get(tid)
-    if client is not None:
-        return client
-    with _clients_lock:
-        client = _local_clients.get(tid)
-        if client is None:
-            client = _XhsClient()
-            _local_clients[tid] = client
-    return client
-
-
-def close_all_clients() -> None:
-    with _clients_lock:
-        clients = list(_local_clients.values())
-        _local_clients.clear()
-    for client in clients:
-        try:
-            client.close()
-        except Exception as exc:  # noqa: BLE001
-            print_warning(f"关闭 redfox XHS 客户端失败: {exc}")
-
-
-# ---------------------------------------------------------------------------
 # 模块级便捷函数
 # ---------------------------------------------------------------------------
+
+def _get_default_client() -> XhsClient:
+    return _get_client_for("xhs", XhsClient)
+
 
 def search_articles(
     keyword: str = "",
@@ -397,7 +216,7 @@ def iter_search_articles(
     keyword: str = "",
     max_pages: int = 5,
     sort_type: str = "2",
-    page_size: int = 20,
+    page_size: int = PAGE_SIZE,
 ) -> Iterable[Dict[str, Any]]:
     return _get_default_client().iter_search_articles(
         keyword=keyword,
@@ -425,7 +244,7 @@ def iter_user_works(
     user_id: str = "",
     max_pages: int = 5,
     sort_type: str = "2",
-    page_size: int = 20,
+    page_size: int = PAGE_SIZE,
 ) -> Iterable[Dict[str, Any]]:
     return _get_default_client().iter_user_works(
         user_id=user_id,
@@ -462,6 +281,7 @@ def parse_work_publish_time(text: str) -> int:
 
 
 __all__ = [
+    "XhsClient",
     "RedfoxError",
     "search_articles",
     "iter_search_articles",
@@ -469,11 +289,10 @@ __all__ = [
     "get_user_works",
     "iter_user_works",
     "parse_work_publish_time",
-    "close_all_clients",
-    "DEFAULT_BASE_URL",
+    # 路径常量
     "SEARCH_ARTICLES_PATH",
     "SEARCH_USERS_PATH",
     "GET_USER_WORKS_PATH",
-    "SUCCESS_CODE",
+    # 共用常量 (供旧 import 兼容)
     "PAGE_SIZE",
 ]

@@ -169,7 +169,7 @@ const deleteMp = async (id) => {
 }
 
 const goToFilterRules = (mpId: string) => {
-  router.push({ path: '/filter-rules', query: { mp_id: mpId } })
+  router.push({ path: '/feedops/filter-rules', query: { mp_id: mpId } })
 }
 
 const handlePageChange = (page) => {

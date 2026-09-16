@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import BasicLayout from '../components/Layout/BasicLayout.vue'
-import ExportRecords from '../views/wechat/ExportRecords.vue'
+import ExportRecords from '../views/feedops/ExportRecords.vue'
 import Login from '../views/Login.vue'
 import ArticleList from '../views/wechat/ArticleList.vue'
 import ChangePassword from '../views/system/ChangePassword.vue'
@@ -9,12 +9,12 @@ import AddSubscription from '../views/wechat/AddSubscription.vue'
 import WeChatMpManagement from '../views/wechat/WeChatMpManagement.vue'
 import ConfigList from '../views/system/ConfigList.vue'
 import ConfigDetail from '../views/system/ConfigDetail.vue'
-import MessageTaskList from '../views/wechat/MessageTaskList.vue'
-import MessageTaskForm from '../views/wechat/MessageTaskForm.vue'
+import MessageTaskList from '../views/feedops/MessageTaskList.vue'
+import MessageTaskForm from '../views/feedops/MessageTaskForm.vue'
 import NovelReader from '../views/reader/NovelReader.vue'
-import FilterRuleList from '../views/wechat/FilterRuleList.vue'
-import FilterRuleForm from '../views/wechat/FilterRuleForm.vue'
-import TaskQueueView from '../views/wechat/TaskQueueView.vue'
+import FilterRuleList from '../views/feedops/FilterRuleList.vue'
+import FilterRuleForm from '../views/feedops/FilterRuleForm.vue'
+import TaskQueueView from '../views/feedops/TaskQueueView.vue'
 import ForgotPassword from '../views/ForgotPassword.vue'
 
 const routes = [
@@ -66,12 +66,12 @@ const routes = [
         }
       },
       {
-        path: 'export/records',
+        path: 'feedops/exports',
         name: 'ExportList',
         component: ExportRecords,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['config:view'] 
+          permissions: ['config:view']
         }
       },
       {
@@ -79,74 +79,74 @@ const routes = [
         name: 'ConfigDetail',
         component: ConfigDetail,
         props: true,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['config:view'] 
+          permissions: ['config:view']
         }
       },
       {
-        path: 'message-tasks',
+        path: 'feedops/message-tasks',
         name: 'MessageTaskList',
         component: MessageTaskList,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['message_task:view'] 
+          permissions: ['message_task:view']
         }
       },
       {
-        path: 'message-tasks/add',
+        path: 'feedops/message-tasks/add',
         name: 'MessageTaskAdd',
         component: MessageTaskForm,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['message_task:edit'] 
+          permissions: ['message_task:edit']
         }
       },
       {
-        path: 'message-tasks/edit/:id',
+        path: 'feedops/message-tasks/edit/:id',
         name: 'MessageTaskEdit',
         component: MessageTaskForm,
         props: true,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['message_task:edit'] 
+          permissions: ['message_task:edit']
         }
       },
       {
         path: 'sys-info',
         name: 'SysInfo',
         component: () => import('@/views/system/SysInfo.vue'),
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['admin'] 
+          permissions: ['admin']
         }
       },
       {
-        path: 'tags',
+        path: 'feedops/tags',
         name: 'TagList',
-        component: () => import('@/views/wechat/TagList.vue'),
-        meta: { 
+        component: () => import('@/views/feedops/TagList.vue'),
+        meta: {
           requiresAuth: true,
-          permissions: ['tag:view'] 
+          permissions: ['tag:view']
         }
       },
       {
-        path: 'tags/add',
+        path: 'feedops/tags/add',
         name: 'TagAdd',
-        component: () => import('@/views/wechat/TagForm.vue'),
-        meta: { 
+        component: () => import('@/views/feedops/TagForm.vue'),
+        meta: {
           requiresAuth: true,
-          permissions: ['tag:edit'] 
+          permissions: ['tag:edit']
         }
       },
       {
-        path: 'tags/edit/:id',
+        path: 'feedops/tags/edit/:id',
         name: 'TagEdit',
-        component: () => import('@/views/wechat/TagForm.vue'),
+        component: () => import('@/views/feedops/TagForm.vue'),
         props: true,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['tag:edit'] 
+          permissions: ['tag:edit']
         }
       },
       {
@@ -195,35 +195,35 @@ const routes = [
         }
       },
       {
-        path: 'filter-rules',
+        path: 'feedops/filter-rules',
         name: 'FilterRuleList',
         component: FilterRuleList,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage'] 
+          permissions: ['wechat:manage']
         }
       },
       {
-        path: 'filter-rules/add',
+        path: 'feedops/filter-rules/add',
         name: 'FilterRuleAdd',
         component: FilterRuleForm,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage'] 
+          permissions: ['wechat:manage']
         }
       },
       {
-        path: 'filter-rules/edit/:id',
+        path: 'feedops/filter-rules/edit/:id',
         name: 'FilterRuleEdit',
         component: FilterRuleForm,
         props: true,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage'] 
+          permissions: ['wechat:manage']
         }
       },
       {
-        path: 'task-queue',
+        path: 'feedops/task-queue',
         name: 'TaskQueue',
         component: TaskQueueView,
         meta: {
@@ -232,9 +232,9 @@ const routes = [
         }
       },
       {
-        path: 'lark/bitables',
+        path: 'feedops/lark/bitables',
         name: 'LarkBitable',
-        component: () => import('@/views/system/LarkBitable.vue'),
+        component: () => import('@/views/feedops/LarkBitable.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['admin']

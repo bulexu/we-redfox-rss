@@ -14,10 +14,17 @@
 import { ref, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import http from '@/api/http'
-import type { MpItem } from '@/types/subscription'
 
-/** Feed 选项 — 兼容旧 MpItem 字段, 多两个跨平台用字段 (platform, target)。 */
-export interface FeedItem extends MpItem {
+/** Feed 选项 — 兼容旧 MpItem 字段 (mp_id/mp_name/avatar), 多两个跨平台用字段。
+ *  保留 ``mp_cover`` 别名以便旧 form 模板 (用了 mp_cover) 不改也能工作。 */
+export interface FeedItem {
+  id: string
+  // 兼容旧字段 (MpMultiSelect 时期用 mp_id/mp_name/mp_cover)
+  mp_id?: string
+  mp_name?: string
+  mp_cover?: string
+  avatar?: string
+  // 跨平台字段
   platform?: 'mp' | 'xhs' | 'unknown'
   target?: string
 }
@@ -81,12 +88,12 @@ const fetchFeeds = async (reset = true) => {
       params.platform = currentPlatform.value
     }
 
-    const res = await http.get<{ code: number; data: { list: any[]; total: number } }>(
+    const res = await http.get<{ list: any[]; total: number }>(
       '/feeds',
       { params }
     )
 
-    const mapped: FeedItem[] = (res.data?.list || []).map((item: any) => ({
+    const mapped: FeedItem[] = (res.list || []).map((item: any) => ({
       id: item.id,
       mp_name: item.name || item.mp_name || '',
       mp_cover: item.cover || item.mp_cover || item.avatar || '',
@@ -102,7 +109,7 @@ const fetchFeeds = async (reset = true) => {
       feedList.value = [...feedList.value, ...newFeeds]
     }
 
-    totalCount.value = res.data?.total || 0
+    totalCount.value = res.total || 0
     hasMore.value =
       feedList.value.length < totalCount.value && currentOffset.value + pageSize < maxOffset
 

@@ -234,7 +234,7 @@ class WxGather:
                     except Exception:
                         mp_id = ""
 
-            record_env_exception(url=url, name=mp_name, mp_id=mp_id)
+            record_env_exception(url=url, mp_name=mp_name, mp_id=mp_id)
         except Exception as e:
             print_warning(f"记录环境异常失败: {e}")
     def Wait(self,min=10,max=60,tips:str=""):

@@ -612,9 +612,11 @@ async def submit_article_content(
     行为约定:
       * ``deleted=True``: 文章已被发布者删除。状态置 DELETED,has_content=0,
         若仍带 content 也一并清空。
-      * ``content`` 非空: 写入正文,经 `fix_html` 处理得到 content_html(若
-        调用方已提供 content_html 则直接采用),status=ACTIVE,has_content=1,
-        重置 fix_fail_count 与 web_fetch_fail_count。
+      * ``content`` 非空: 写入正文前先经 `Web.clean_article_content` 清理
+        (图片修复 + 过滤规则 + clean_html,与 Playwright 链路一致),再经
+        `fix_html` 处理得到 content_html(若调用方已提供 content_html 则直
+        接采用),status=ACTIVE,has_content=1,重置 fix_fail_count 与
+        web_fetch_fail_count。
       * 仅 ``content=""`` 或空 payload: 400,不做任何写库操作。
 
     与现有 Playwright/Redfox 链路的关系: 写入成功后 has_content=1,
@@ -646,13 +648,24 @@ async def submit_article_content(
                 article.description = payload.description
         elif content is not None:
             # content 显式传入(包括空字符串) → 视为有效抓取结果
-            article.content = content
+            # RPA 回写的内容本质上是 innerHtml 结果,与 Playwright 抓取链路一致,
+            # 需要经 clean_article_content 清理(图片修复 + 过滤规则 + clean_html)
+            cleaned_content = content
+            if content:
+                try:
+                    from driver.wxarticle import Web
+                    cleaned_content = Web.clean_article_content(
+                        content, mp_id=article.mp_id or ""
+                    )
+                except Exception as clean_exc:
+                    print_warning(f"clean_article_content failed for {article.id}: {clean_exc}")
+            article.content = cleaned_content
             try:
                 if payload.content_html:
                     article.content_html = payload.content_html
                 else:
                     from tools.fix import fix_html
-                    article.content_html = fix_html(content)
+                    article.content_html = fix_html(cleaned_content)
             except Exception as html_exc:
                 print_warning(f"fix_html failed for {article.id}: {html_exc}")
                 article.content_html = ""

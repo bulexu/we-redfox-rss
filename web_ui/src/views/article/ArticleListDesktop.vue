@@ -45,7 +45,7 @@
                   <a-list-item @click="handleMpClick(item.id)" :class="{ 'active-mp': activeMpId === item.id }"
                     style="padding: 8px 6px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; align-items: center;">
-                      <img :src="Avatar(item.avatar)" width="40" style="float:left;margin-right:1rem;" />
+                      <img :src="Avatar(item.cover)" width="40" style="float:left;margin-right:1rem;" />
                       <a-typography-text strong style="line-height:32px;" :style="{ opacity: item.status === 0 ? 0.5 : 1 }">
                         {{ (item.name || item.mp_name).length > 12 ? (item.name || item.mp_name).substring(0, 12) + '...' : (item.name || item.mp_name) }}
                       </a-typography-text>
@@ -54,7 +54,7 @@
                   <template #content>
                     <div style="display: flex; flex-direction: column; gap: 8px;">
                       <div style="display: flex; align-items: center; gap: 8px;">
-                        <img :src="Avatar(item.avatar)" width="32" style="border-radius: 4px;" />
+                        <img :src="Avatar(item.cover)" width="32" style="border-radius: 4px;" />
                         <div style="flex: 1;">
                           <div style="font-weight: 600; font-size: 14px;">{{ item.name || item.mp_name }}</div>
                           <div style="font-size: 12px; color: var(--color-text-3);" v-if="item.id">ID: {{ item.id }}</div>
@@ -1272,7 +1272,7 @@ const fetchMpList = async () => {
     mpList.value = res.list.map(item => ({
       id: item.id || item.mp_id,
       name: item.name || item.mp_name,
-      avatar: item.avatar || item.mp_cover || '',
+      cover: item.cover || item.mp_cover || item.avatar || '',
       intro: item.intro || item.mp_intro || '',
       article_count: item.article_count || 0,
       status: item.status ?? 1

@@ -109,7 +109,7 @@
           <a-list-item @click="handleMpClick(item.id)" :class="{ 'active-mp': activeMpId === item.id }"
             style="display: flex; align-items: center; justify-content: flex-start; text-align: left;">
             <div style="display: flex; align-items: center; flex: 1;">
-              <img :src="Avatar(item.avatar)" width="40" style="float:left;margin-right:1rem;"/>
+              <img :src="Avatar(item.cover)" width="40" style="float:left;margin-right:1rem;"/>
               <a-typography-text style="line-height:40px;margin-left:1rem;" strong :style="{ opacity: item.status === 0 ? 0.5 : 1 }">
                 {{ item.name || item.mp_name }}
               </a-typography-text>
@@ -418,7 +418,7 @@ const fetchMpList = async (isLoadMore = false) => {
     const newItems = res.list.map(item => ({
       id: item.id || item.mp_id,
       name: item.name || item.mp_name,
-      avatar: item.avatar || item.mp_cover || '',
+      cover: item.cover || item.mp_cover || item.avatar || '',
       intro: item.intro || item.mp_intro || '',
       status: item.status ?? 1
     }))

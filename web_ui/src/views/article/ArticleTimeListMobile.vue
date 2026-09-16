@@ -63,7 +63,7 @@
     <a-list :data="mpList" :loading="mpLoading" bordered>
       <template #item="{ item }">
         <a-list-item @click="handleMpClick(item.id)" :class="{ 'active-mp': activeMpId === item.id }">
-          <img :src="Avatar(item.avatar)" width="40" style="float:left;margin-right:1rem;" />
+          <img :src="Avatar(item.cover)" width="40" style="float:left;margin-right:1rem;" />
           <a-typography-text style="line-height:40px;margin-left:1rem;" strong>{{ item.name || item.mp_name
             }}</a-typography-text>
         </a-list-item>
@@ -271,7 +271,7 @@ const fetchMpList = async () => {
     mpList.value = res.list.map(item => ({
       id: item.id || item.mp_id,
       name: item.name || item.mp_name,
-      avatar: item.avatar || item.mp_cover || '',
+      cover: item.cover || item.mp_cover || item.avatar || '',
       intro: item.intro || item.mp_intro || ''
     }))
   } catch (error) {

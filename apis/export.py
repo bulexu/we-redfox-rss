@@ -5,6 +5,8 @@ from starlette.background import BackgroundTask
 from core.auth import get_current_user_or_ak
 from core.db import DB
 from core.wx import search_Biz
+from core.models.feed import Feed, PLATFORM_MP, PLATFORM_XHS, infer_platform_from_id
+from core.redfox.xhs.sync import XHS_KW_PREFIX, XHS_U_PREFIX
 from .base import success_response, error_response
 from datetime import datetime
 from core.config import cfg
@@ -15,53 +17,166 @@ import os
 import uuid
 router = APIRouter(prefix=f"/export", tags=["导入/导出"])
 
-@router.get("/mps/export", summary="导出公众号列表")
+
+# 统一 Excel 导出 sheet 配置: (sheet 名, 中文表头, 行生成器)
+# 改这里就能扩展新平台 / 调表头,无需改主体逻辑。
+_EXCEL_SHEETS = [
+    (
+        "公众号",
+        ["id", "公众号名称", "封面图", "简介", "状态", "创建时间", "faker_id"],
+        lambda f: [
+            f.id, f.name, f.cover, f.intro, f.status,
+            f.created_at.isoformat() if f.created_at else "",
+            f.faker_id or "",
+        ],
+    ),
+    (
+        "小红书-关键词",
+        ["id", "关键词(target)", "显示名", "封面", "简介", "状态", "创建时间"],
+        lambda f: [
+            f.id, getattr(f, "target", "") or "", f.name or "",
+            f.cover or "", f.intro or "", f.status,
+            f.created_at.isoformat() if f.created_at else "",
+        ],
+    ),
+    (
+        "小红书-账号",
+        ["id", "账号ID(target)", "昵称", "头像", "简介", "状态", "创建时间"],
+        lambda f: [
+            f.id, getattr(f, "target", "") or "", f.name or "",
+            f.cover or "", f.intro or "", f.status,
+            f.created_at.isoformat() if f.created_at else "",
+        ],
+    ),
+]
+
+
+def _classify_feed_for_export(feed: Feed) -> str | None:
+    """把 feed 分类到对应 Excel sheet, 不属于任何已知平台返回 None (略过)。"""
+    platform = feed.platform or infer_platform_from_id(feed.id)
+    if platform == PLATFORM_MP and feed.id.startswith("MP_WXS_"):
+        return "公众号"
+    if platform == PLATFORM_XHS:
+        if feed.id.startswith(XHS_KW_PREFIX):
+            return "小红书-关键词"
+        if feed.id.startswith(XHS_U_PREFIX):
+            return "小红书-账号"
+    return None
+
+
+@router.get("/feeds/export", summary="导出全部 feed (跨平台,按 sheet 区分)")
+async def export_feeds_excel(
+    limit: int = Query(5000, ge=1, le=20000),
+    offset: int = Query(0, ge=0),
+    kw: str = Query(""),
+    current_user: dict = Depends(get_current_user_or_ak),
+):
+    """导出全平台 feed 列表为 xlsx, 按平台拆 sheet。
+
+    * sheet "公众号": MP_WXS_* + platform=mp
+    * sheet "小红书-关键词": XHS_KW_* + platform=xhs
+    * sheet "小红书-账号": XHS_U_* + platform=xhs
+
+    旧的 ``/export/mps/export`` 保留,内部委托此实现并固定只输出 mp sheet
+    (向前兼容前端 URL)。
+    """
+    session = DB.get_session()
+    try:
+        query = session.query(Feed)
+        if kw:
+            query = query.filter(Feed.name.ilike(f"%{kw}%"))
+        feeds = (
+            query.order_by(Feed.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        # 默认 sheet 删掉,改用每个平台一个 sheet
+        wb.remove(wb.active)
+        sheet_rows: dict[str, list[list]] = {}
+        for sheet_name, headers, _row_builder in _EXCEL_SHEETS:
+            sheet_rows[sheet_name] = [list(headers)]
+        for f in feeds:
+            sheet_name = _classify_feed_for_export(f)
+            if not sheet_name:
+                continue
+            for sn, _, row_builder in _EXCEL_SHEETS:
+                if sn == sheet_name:
+                    sheet_rows[sn].append(row_builder(f))
+                    break
+
+        for sheet_name, headers, _ in _EXCEL_SHEETS:
+            ws = wb.create_sheet(title=sheet_name)
+            for row in sheet_rows[sheet_name]:
+                ws.append(row)
+
+        temp_file = "temp_feeds_export.xlsx"
+        wb.save(temp_file)
+        return FileResponse(
+            temp_file,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename="订阅列表.xlsx",
+            background=BackgroundTask(lambda: os.remove(temp_file)),
+        )
+    except Exception as e:
+        print(f"导出订阅列表错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_response(code=50001, message="导出订阅列表失败"),
+        )
+
+
+@router.get("/mps/export", summary="(兼容) 导出公众号列表 — 委托 /export/feeds/export")
 async def export_mps(
     limit: int = Query(1000, ge=1, le=10000),
     offset: int = Query(0, ge=0),
     kw: str = Query(""),
     current_user: dict = Depends(get_current_user_or_ak)
 ):
+    """旧路径 — 返回与 ``/export/feeds/export`` 相同的 xlsx, 但只导出 mp sheet 数据
+    (其它 sheet 表头存在但内容为空, 保留前端 ``ExportMPS`` 调用零改动)。
+    """
     session = DB.get_session()
     try:
         from core.models.feed import Feed
-        query = session.query(Feed)
+        # 仅 mp 数据
+        query = session.query(Feed).filter(
+            (Feed.platform == PLATFORM_MP) | Feed.platform.is_(None),
+        ).filter(Feed.id.like("MP_WXS_%"))
         if kw:
             query = query.filter(Feed.name.ilike(f"%{kw}%"))
-
         mps = query.order_by(Feed.created_at.desc()).limit(limit).offset(offset).all()
 
-        # 准备CSV数据
-        headers = ["id", "公众号名称", "封面图", "简介", "状态", "创建时间", "faker_id"]
-        data = [[
-            mp.id,
-            mp.name,
-            mp.cover,
-            mp.intro,
-            mp.status,
-            mp.created_at.isoformat(),
-            mp.faker_id
-        ] for mp in mps]
+        from openpyxl import Workbook
 
-        # 创建临时CSV文件
-        temp_file = "temp_mp_export.csv"
-        with open(temp_file, "w", encoding='utf-8-sig', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-            writer.writerows(data)
+        wb = Workbook()
+        wb.remove(wb.active)
+        for sheet_name, headers, row_builder in _EXCEL_SHEETS:
+            ws = wb.create_sheet(title=sheet_name)
+            ws.append(list(headers))
+            if sheet_name == "公众号":
+                for mp in mps:
+                    ws.append(row_builder(mp))
+        # 其它 sheet 仅保留表头 (向前兼容旧前端)
+        # 行生成器对于非 mp sheet 仍会被调, 但没有数据 → 自然空
 
-        # 返回文件下载
+        temp_file = "temp_mp_export.xlsx"
+        wb.save(temp_file)
         return FileResponse(
             temp_file,
-            media_type="text/csv",
-            filename="公众号列表.csv",
-            background=BackgroundTask(lambda: os.remove(temp_file))
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename="订阅列表.xlsx",
+            background=BackgroundTask(lambda: os.remove(temp_file)),
         )
 
     except Exception as e:
         print(f"导出公众号列表错误: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_201_CREATED,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_response(
                 code=50001,
                 message="导出公众号列表失败"

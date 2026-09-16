@@ -34,6 +34,8 @@ def test(info:str):
 from core.models.message_task import MessageTask
 # from core.queue import TaskQueue
 from .webhook import web_hook
+from core.xhs import do_job_xhs
+from core.xhs.sync import XHS_KW_PREFIX, XHS_U_PREFIX
 interval=int(cfg.get("interval",60)) # 兼容历史配置;get_Articles 已不再读取
 def do_job(mp=None,task:MessageTask=None,isTest=False):
         """执行单个公众号的采集任务"""
@@ -394,6 +396,208 @@ def start_fix_article():
       #开启自动同步未同步 文章任务
     from jobs.fetch_no_article import start_sync_content
     start_sync_content()
+
+
+# ============================================================
+# 小红书 (XHS) 调度
+# ============================================================
+# 设计 (与微信公众号调度对称,  但完全独立):
+#   * 全局唯一 MessageTask, ``platform='xhs'``, ``target_feed_ids='[]'``
+#     (空列表 = "所有 XHS_KW_* / XHS_U_* feed")。
+#   * 每次 cron 触发 = 单条 TaskQueue 任务,  内部用 ThreadPoolExecutor 并发
+#     调用 ``do_job_xhs``。  错误计数 / 自动暂停由 ``do_job_xhs`` 自身管理。
+#   * 现有 WeChat 路径 (``add_job`` / ``start_job``) **未改动**,  本节为
+#     增量扩展,  不影响公众号 cron 行为。
+
+XHS_GLOBAL_TASK_ID = "xhs_global"
+XHS_GLOBAL_TASK_CRON = "0 */6 * * *"  # 默认每 6 小时,  可在数据库里改
+
+
+def _query_xhs_feeds() -> list[Feed]:
+    """从 DB 拉所有 ``status=1`` 的 XHS 订阅 (KW / U 两种都算)。
+
+    不带 sort — 后面并发派发无序即可。
+    """
+    session = db.DB.get_session()
+    try:
+        rows = (
+            session.query(Feed)
+            .filter(Feed.status == 1)
+            .filter(
+                (Feed.id.like(f"{XHS_KW_PREFIX}%"))
+                | (Feed.id.like(f"{XHS_U_PREFIX}%"))
+            )
+            .all()
+        )
+        # 显式 expire 后让 TaskQueue 跨线程也能安全读取
+        for f in rows:
+            session.expire(f)
+        return rows
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
+
+
+def _run_xhs_batch(feeds, task, isTest):
+    """并发执行一批 XHS feed 的采集 (供 ``TaskQueue`` 调用)。
+
+    与 ``_run_batch`` (公众号侧) 结构对称,  但 worker 直接是 ``do_job_xhs``
+    而不是 ``do_job``,  而且不挂 webhook (XHS 暂无 MessageTask.web_hook 语义)。
+    """
+    if not feeds:
+        return
+
+    target = feeds
+    if isTest:
+        target = feeds[:1]
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    TaskQueue.clear_subtasks()
+
+    def _run_with_subtask(feed):
+        TaskQueue.add_subtask(feed.name)
+        try:
+            do_job_xhs(feed, isTest)
+        except Exception as unhandled_exc:  # noqa: BLE001
+            TaskQueue.mark_subtask_completed(
+                feed.name,
+                success=False,
+                error=f"unhandled: {unhandled_exc}",
+            )
+            raise
+
+    try:
+        with ThreadPoolExecutor(
+            max_workers=max(1, min(len(target), max_workers)),
+            thread_name_prefix="xhs-fetch",
+        ) as executor:
+            futures = {
+                executor.submit(_run_with_subtask, feed): feed
+                for feed in target
+            }
+            for fut in as_completed(futures):
+                feed = futures[fut]
+                try:
+                    fut.result()
+                except Exception as exc:  # noqa: BLE001
+                    print_error(f"[xhs] 并发采集未捕获异常 [{feed.name}]: {exc}")
+    finally:
+        TaskQueue.clear_subtasks()
+
+
+def add_xhs_job(feeds=None, task: MessageTask = None, isTest=False):
+    """派发一批 XHS feed 到 TaskQueue。
+
+    ``feeds`` 缺省时按 ``task`` 解析 — 当前仅支持 ``task.id ==
+    XHS_GLOBAL_TASK_ID`` (从 DB 拉所有活跃 XHS 订阅)。  也支持手动指定
+    ``feeds`` 列表 (单元测试 / API 触发用)。
+    """
+    if isTest:
+        TaskQueue.clear_queue()
+
+    if feeds is None:
+        if task is not None and task.id == XHS_GLOBAL_TASK_ID:
+            feeds = _query_xhs_feeds()
+        else:
+            feeds = []
+
+    if not feeds:
+        print_info("[xhs] 没有可派发的 feed (status=1 且 id 以 XHS_KW_/XHS_U_ 开头)")
+        return
+
+    name = task.name if task else "xhs_global"
+    prefix = "[测试]" if isTest else ""
+    task_label = f"{prefix}XHS采集:{name}({len(feeds)} feeds)"
+
+    TaskQueue.add_task(
+        _run_xhs_batch,
+        list(feeds),
+        task,
+        isTest,
+        task_name=task_label,
+    )
+    print_info(f"{task_label}, 加入队列成功")
+    print_success(TaskQueue.get_queue_info())
+
+
+def ensure_xhs_global_task() -> MessageTask:
+    """确保全局 XHS MessageTask 存在 (不存在则按默认配置插入一条)。
+
+    Returns:
+        MessageTask: 已存在或新建的全局任务。
+    """
+    session = db.DB.get_session()
+    try:
+        existing = (
+            session.query(MessageTask)
+            .filter(MessageTask.id == XHS_GLOBAL_TASK_ID)
+            .first()
+        )
+        if existing:
+            # 同步关键字段: 用户可能从 UI 改了 status / cron_exp, 不覆盖
+            return existing
+
+        cron = (
+            cfg.get("xhs.global_cron")
+            or cfg.get("xhs.refresh_interval_cron")
+            or XHS_GLOBAL_TASK_CRON
+        )
+        task = MessageTask(
+            id=XHS_GLOBAL_TASK_ID,
+            name="小红书全局采集",
+            message_type=0,
+            message_template="",
+            web_hook_url="",
+            headers=None,
+            cookies=None,
+            target_feed_ids="[]",  # 空 = "所有 XHS feed"
+            platform="xhs",
+            cron_exp=cron,
+            status=1,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        print_success(f"[xhs] 已创建全局 MessageTask: id={task.id} cron={cron}")
+        return task
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        print_error(f"[xhs] 创建全局 MessageTask 失败: {exc}")
+        return None
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
+
+
+def start_xhs_job():
+    """注册 XHS 全局 MessageTask 的 cron 任务 (复用现有 scheduler 单例)。
+
+    仅调度 ``platform='xhs'`` 且 ``id == XHS_GLOBAL_TASK_ID`` 的那条任务。
+    """
+    global_task = ensure_xhs_global_task()
+    if global_task is None:
+        print_warning("[xhs] 全局任务不存在且创建失败, 跳过 cron 注册")
+        return
+
+    if not global_task.cron_exp:
+        print_warning(f"[xhs] 全局任务 {global_task.id} 未配置 cron_exp, 跳过")
+        return
+
+    job_id = scheduler.add_cron_job(
+        add_xhs_job,
+        cron_expr=global_task.cron_exp,
+        kwargs={"task": global_task},
+        job_id=f"xhs-{global_task.id}",
+        tag="XHS定时采集",
+    )
+    print_success(f"[xhs] cron 已注册: {job_id} cron={global_task.cron_exp}")
 
 def start_article_stats_refresh():
     """启动文章统计定时刷新任务"""

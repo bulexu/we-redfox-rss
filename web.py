@@ -35,6 +35,7 @@ from apis.filter_rule import router as filter_rule_router
 from apis.task_queue import router as task_queue_router
 from apis.proxy import router as proxy_router
 from apis.lark import router as lark_router
+from apis.xhs import router as xhs_router
 from views import router as views_router
 import apis
 import os
@@ -129,6 +130,7 @@ api_router.include_router(filter_rule_router)
 api_router.include_router(task_queue_router)
 api_router.include_router(proxy_router)
 api_router.include_router(lark_router)
+api_router.include_router(xhs_router)
 
 resource_router = APIRouter(prefix="/static")
 resource_router.include_router(res_router)

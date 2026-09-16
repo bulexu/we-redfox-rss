@@ -345,3 +345,136 @@ async def rss(
     return await get_mp_articles_source(request=request,feed_id=feed_id, tag_id=tag_id,limit=limit,offset=offset, is_update=is_update,ext=ext,kw=kw,content_type=content_type)
 
 
+# ===== 小红书 (XHS) 专用 RSS =====
+# 区别于公众号:
+#   * description 用 workDesc 前 200 字 (公众号无 workDesc, 走 title 回退)
+#   * content 始终保留 workDesc 全文,  RSS reader 里可读完整笔记正文
+#   * 不嵌入视频/多图 (按 Q13 设计: 后续多图再加)
+#   * 缓存 key 与公众号隔离, 防止互相覆盖
+
+XHS_DESC_MAX_CHARS = 200
+
+
+@router.get("/xhs/{feed_id}", summary="获取 XHS feed 的 RSS")
+async def get_xhs_feed_rss(
+    request: Request,
+    feed_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    if not (feed_id.startswith("XHS_KW_") or feed_id.startswith("XHS_U_")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_response(
+                code=40001,
+                message="非 XHS feed_id",
+            ),
+        )
+
+    limit = clamp_rss_limit(limit)
+    rss = RSS(name=f"xhs_{feed_id}_{limit}_{offset}")
+    rss_xml = rss.get_cache()
+    if rss_xml is not None:
+        return Response(content=rss_xml, media_type=rss.get_type())
+
+    session = DB.get_session()
+    try:
+        from core.models.article import Article
+        feed = session.query(Feed).filter(Feed.id == feed_id).first()
+        if not feed:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_response(code=40403, message="XHS 订阅不存在"),
+            )
+
+        rss_domain = str(cfg.get("rss.base_url", str(request.base_url))).rstrip("/") + "/"
+        feed_link = f"{rss_domain}feed/xhs/{feed_id}.rss"
+
+        rows = (
+            session.query(Article)
+            .filter(Article.feed_id == feed_id)
+            .order_by(Article.publish_time.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+        from datetime import datetime, timezone, timedelta
+        cst = timezone(timedelta(hours=8))
+
+        def _truncate(text: str, n: int = XHS_DESC_MAX_CHARS) -> str:
+            if not text:
+                return ""
+            text = text.strip()
+            return text if len(text) <= n else text[: n - 1] + "…"
+
+        rss_list = [{
+            "id": str(a.id),
+            "title": a.title or "",
+            "link": a.url or f"{rss_domain}views/article/{a.id}",
+            "description": _truncate(a.content or a.title or ""),
+            "content": a.content or "",
+            "image": a.pic_url or "",
+            "name": feed.name or "",
+            "updated": datetime.fromtimestamp(a.publish_time or 0, tz=cst),
+            "feed": {
+                "id": feed.id,
+                "name": feed.name,
+                "cover": feed.cover,
+                "intro": feed.intro,
+            },
+        } for a in rows]
+
+        # 内容缓存 (用于 /rss/content/{id} 详情页)
+        for a in rows:
+            rss.cache_content(a.id, {
+                "id": a.id,
+                "title": a.title,
+                "content": a.content,
+                "publish_time": a.publish_time,
+                "feed_id": a.feed_id,
+                "pic_url": a.pic_url,
+                "name": feed.name,
+            })
+
+        rss_xml = rss.generate_rss(
+            rss_list,
+            title=f"XHS: {feed.name}",
+            link=feed_link,
+            description=feed.intro or "",
+            image_url=feed.cover or "",
+        )
+        return Response(content=rss_xml, media_type=rss.get_type())
+    except HTTPException:
+        raise
+    except Exception as e:
+        print_error(f"获取 XHS RSS 错误:{e}")
+        if rss_xml is not None:
+            return Response(content=rss_xml, media_type=rss.get_type())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_response(code=50002, message="获取 XHS RSS 失败"),
+        )
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
+
+
+@feed_router.get("/xhs/{feed_id}.{ext}", summary="XHS RSS (feed_router 别名)")
+async def xhs_rss(
+    request: Request,
+    feed_id: str,
+    ext: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    return await get_xhs_feed_rss(
+        request=request,
+        feed_id=feed_id,
+        limit=limit,
+        offset=offset,
+    )
+
+

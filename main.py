@@ -84,6 +84,17 @@ if __name__ == '__main__':
         print_success("已开启定时任务")
     else:
         print_warning("未开启定时任务")
+
+    # 启动小红书 (XHS) 全局调度: 复用现有 scheduler, 不影响公众号 cron
+    if cfg.args.job == "True" and cfg.get("server.enable_job", False):
+        try:
+            from jobs.mps import ensure_xhs_global_task, start_xhs_job
+            ensure_xhs_global_task()
+            start_xhs_job()
+        except Exception as e:  # noqa: BLE001
+            print_warning(f"启动小红书全局调度失败: {e}")
+    else:
+        print_warning("未开启定时任务, 跳过小红书调度")
     
     if cfg.get("gather.content_auto_check",False):
         from jobs import start_fix_article

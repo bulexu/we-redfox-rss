@@ -1283,7 +1283,7 @@ const fetchMpList = async () => {
       mpList.value.unshift({
         id: FEATURED_MP_ID,
         name: FEATURED_MP_NAME,
-        avatar: '/static/logo.svg',
+        cover: '/static/logo.svg',
         intro: '用户手动添加的精选文章',
         article_count: 0,
         status: 1
@@ -1292,7 +1292,7 @@ const fetchMpList = async () => {
       mpList.value.unshift({
         id: '',
         name: '全部',
-        avatar: '/static/logo.svg',
+        cover: '/static/logo.svg',
         intro: '显示所有公众号文章',
         article_count: res.total || 0,
         status: 1

@@ -163,7 +163,7 @@ class XhsClient(RedfoxClient):
                 "sortType": str(sort_type),
             },
             sdk_op=lambda: self._sdk.xiaohongshu.get_user_works(
-                user_id=uid,
+                userid=uid,
                 offset=offset,
                 sort_type=str(sort_type),
             ),

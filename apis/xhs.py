@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from core.auth import get_current_user_or_ak
 from core.db import DB
-from core.models.feed import Feed
+from core.models.feed import Feed, PLATFORM_XHS
 from core.print import print_error, print_info, print_warning
 from core.redfox.xhs import (
     XHS_KW_PREFIX,
@@ -64,6 +64,15 @@ class SearchUsersRequest(BaseModel):
 # ===== Helper =====
 
 def _feed_to_dict(f: Feed) -> dict:
+    # target 来源: 优先 f.target (新数据), 否则从 id 后缀拆 (老数据, 向后兼容)。
+    if f.target:
+        target = f.target
+    elif f.id.startswith(XHS_KW_PREFIX):
+        target = f.id[len(XHS_KW_PREFIX):]
+    elif f.id.startswith(XHS_U_PREFIX):
+        target = f.id[len(XHS_U_PREFIX):]
+    else:
+        target = ""
     return {
         "id": f.id,
         "name": f.name,
@@ -73,13 +82,7 @@ def _feed_to_dict(f: Feed) -> dict:
         "kind": "keyword" if f.id.startswith(XHS_KW_PREFIX) else (
             "account" if f.id.startswith(XHS_U_PREFIX) else "unknown"
         ),
-        "target": (
-            f.id[len(XHS_KW_PREFIX):]
-            if f.id.startswith(XHS_KW_PREFIX)
-            else f.id[len(XHS_U_PREFIX):]
-            if f.id.startswith(XHS_U_PREFIX)
-            else ""
-        ),
+        "target": target,
         "max_fetch_count": f.max_fetch_count,
         "refresh_interval_hours": f.refresh_interval_hours,
         "last_publish_time": f.last_publish_time,
@@ -105,7 +108,10 @@ async def list_xhs_feeds(
 ):
     session = DB.get_session()
     try:
+        # 平台过滤优先用 platform 列, NULL 时 fallback 到 id 前缀扫描, 兜底兼容老数据。
         query = session.query(Feed).filter(
+            (Feed.platform == PLATFORM_XHS) | Feed.platform.is_(None),
+        ).filter(
             (Feed.id.like(f"{XHS_KW_PREFIX}%")) | (Feed.id.like(f"{XHS_U_PREFIX}%"))
         )
         if kind == "keyword":
@@ -172,6 +178,11 @@ async def create_xhs_feed(
             error_count=0,
             last_error=None,
             last_error_at=None,
+            # 新字段: 原始检索值（keyword 文本 / userId）。
+            # keyword 类型原本就嵌在 id 里, 现在 id 改成 uuid, 必须单独存。
+            target=req.target[:500] if req.target else None,
+            # platform 直接由 build_feed_id 的 kind 决定: keyword/account 都是 xhs
+            platform=PLATFORM_XHS,
         )
         session.add(feed)
         session.commit()

@@ -9,7 +9,7 @@ from .base import success_response, error_response
 from datetime import datetime
 from core.config import cfg
 from core.res import save_avatar_locally
-from core.models.feed import FEATURED_MP_ID, FEATURED_MP_NAME, FEATURED_MP_INTRO
+from core.models.feed import FEATURED_MP_ID, FEATURED_MP_NAME, FEATURED_MP_INTRO, PLATFORM_MP
 from core.models.base import DATA_STATUS
 from core.cache import clear_cache_pattern
 import io
@@ -65,7 +65,8 @@ def _ensure_featured_feed(session):
         update_time=0,
         created_at=now,
         updated_at=now,
-        faker_id=FEATURED_MP_ID
+        faker_id=FEATURED_MP_ID,
+        platform=PLATFORM_MP,
     )
     session.add(featured_feed)
     return featured_feed
@@ -231,7 +232,12 @@ async def get_mps(
     session = DB.get_session()
     try:
         from core.models.feed import Feed
-        query = session.query(Feed).filter(Feed.id != FEATURED_MP_ID)
+        # 公众号列表只显示 platform=mp 的 feed (避免混入小红书订阅)。
+        # 老数据 platform 为 NULL 时 fallback 到 id 前缀扫描, 兜底兼容。
+        query = session.query(Feed).filter(
+            Feed.id != FEATURED_MP_ID,
+            (Feed.platform == PLATFORM_MP) | Feed.platform.is_(None),
+        ).filter(Feed.id.like("MP_WXS_%"))
         if kw:
             query = query.filter(Feed.name.ilike(f"%{kw}%"))
         if status is not None:
@@ -471,6 +477,7 @@ async def add_mp(
             existing_feed.cover = local_avatar_path
             existing_feed.intro = mp_intro
             existing_feed.updated_at = now
+            existing_feed.platform = PLATFORM_MP  # 兜底: 老数据 platform 可能是 NULL
         else:
             # 创建新的Feed记录
             new_feed = Feed(
@@ -484,6 +491,7 @@ async def add_mp(
                 faker_id=mp_id,
                 update_time=0,
                 sync_time=0,
+                platform=PLATFORM_MP,
             )
             session.add(new_feed)
            

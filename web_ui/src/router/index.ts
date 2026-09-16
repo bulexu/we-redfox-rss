@@ -1,20 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import BasicLayout from '../components/Layout/BasicLayout.vue'
-import ExportRecords from '../views/ExportRecords.vue'
+import ExportRecords from '../views/wechat/ExportRecords.vue'
 import Login from '../views/Login.vue'
-import ArticleList from '../views/ArticleList.vue'
-import ChangePassword from '../views/ChangePassword.vue'
-import EditUser from '../views/EditUser.vue'
-import AddSubscription from '../views/AddSubscription.vue'
-import WeChatMpManagement from '../views/WeChatMpManagement.vue'
-import ConfigList from '../views/ConfigList.vue'
-import ConfigDetail from '../views/ConfigDetail.vue'
-import MessageTaskList from '../views/MessageTaskList.vue'
-import MessageTaskForm from '../views/MessageTaskForm.vue'
-import NovelReader from '../views/NovelReader.vue'
-import FilterRuleList from '../views/FilterRuleList.vue'
-import FilterRuleForm from '../views/FilterRuleForm.vue'
-import TaskQueueView from '../views/TaskQueueView.vue'
+import ArticleList from '../views/wechat/ArticleList.vue'
+import ChangePassword from '../views/system/ChangePassword.vue'
+import EditUser from '../views/system/EditUser.vue'
+import AddSubscription from '../views/wechat/AddSubscription.vue'
+import WeChatMpManagement from '../views/wechat/WeChatMpManagement.vue'
+import ConfigList from '../views/system/ConfigList.vue'
+import ConfigDetail from '../views/system/ConfigDetail.vue'
+import MessageTaskList from '../views/wechat/MessageTaskList.vue'
+import MessageTaskForm from '../views/wechat/MessageTaskForm.vue'
+import NovelReader from '../views/reader/NovelReader.vue'
+import FilterRuleList from '../views/wechat/FilterRuleList.vue'
+import FilterRuleForm from '../views/wechat/FilterRuleForm.vue'
+import TaskQueueView from '../views/wechat/TaskQueueView.vue'
 import ForgotPassword from '../views/ForgotPassword.vue'
 
 const routes = [
@@ -115,7 +115,7 @@ const routes = [
       {
         path: 'sys-info',
         name: 'SysInfo',
-        component: () => import('@/views/SysInfo.vue'),
+        component: () => import('@/views/system/SysInfo.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['admin'] 
@@ -124,7 +124,7 @@ const routes = [
       {
         path: 'tags',
         name: 'TagList',
-        component: () => import('@/views/TagList.vue'),
+        component: () => import('@/views/wechat/TagList.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['tag:view'] 
@@ -133,7 +133,7 @@ const routes = [
       {
         path: 'tags/add',
         name: 'TagAdd',
-        component: () => import('@/views/TagForm.vue'),
+        component: () => import('@/views/wechat/TagForm.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['tag:edit'] 
@@ -142,7 +142,7 @@ const routes = [
       {
         path: 'tags/edit/:id',
         name: 'TagEdit',
-        component: () => import('@/views/TagForm.vue'),
+        component: () => import('@/views/wechat/TagForm.vue'),
         props: true,
         meta: { 
           requiresAuth: true,
@@ -152,7 +152,7 @@ const routes = [
       {
         path: 'access-keys',
         name: 'AccessKeyManagement',
-        component: () => import('@/views/AccessKeyManagement.vue'),
+        component: () => import('@/views/system/AccessKeyManagement.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['admin'] 
@@ -161,7 +161,7 @@ const routes = [
       {
         path: 'cascade',
         name: 'CascadeManagement',
-        component: () => import('@/views/CascadeManagement.vue'),
+        component: () => import('@/views/wechat/CascadeManagement.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['admin'] 
@@ -170,7 +170,7 @@ const routes = [
       {
         path: 'cascade/feed-status',
         name: 'CascadeFeedStatus',
-        component: () => import('@/views/CascadeFeedStatus.vue'),
+        component: () => import('@/views/wechat/CascadeFeedStatus.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['admin'] 
@@ -179,7 +179,7 @@ const routes = [
       {
         path: 'env-exception',
         name: 'EnvExceptionStats',
-        component: () => import('@/views/EnvExceptionStats.vue'),
+        component: () => import('@/views/system/EnvExceptionStats.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['admin']
@@ -188,7 +188,7 @@ const routes = [
       {
         path: 'redfox/logs',
         name: 'RedfoxLogs',
-        component: () => import('@/views/RedfoxLogs.vue'),
+        component: () => import('@/views/system/RedfoxLogs.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['admin']
@@ -234,7 +234,7 @@ const routes = [
       {
         path: 'lark/bitables',
         name: 'LarkBitable',
-        component: () => import('@/views/LarkBitable.vue'),
+        component: () => import('@/views/system/LarkBitable.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['admin']
@@ -243,7 +243,7 @@ const routes = [
       {
         path: 'users',
         name: 'UserManagement',
-        component: () => import('@/views/UserManagement.vue'),
+        component: () => import('@/views/system/UserManagement.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['admin']
@@ -252,7 +252,7 @@ const routes = [
       {
         path: 'xhs/feeds',
         name: 'XhsFeeds',
-        component: () => import('@/views/XhsFeeds.vue'),
+        component: () => import('@/views/xhs/XhsListDesktop.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['xhs:manage']
@@ -261,20 +261,19 @@ const routes = [
       {
         path: 'xhs/subscriptions',
         name: 'XhsSubscriptions',
-        component: () => import('@/views/XhsSubscriptions.vue'),
+        component: () => import('@/views/xhs/XhsSubscriptions.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['xhs:manage']
         }
       },
       {
+        // 历史路由: 旧 XhsArticles 已合并到 XhsListDesktop 右侧面板
         path: 'xhs/articles',
-        name: 'XhsArticles',
-        component: () => import('@/views/XhsArticles.vue'),
-        meta: {
-          requiresAuth: true,
-          permissions: ['xhs:manage']
-        }
+        redirect: (to: any) => ({
+          path: '/xhs/feeds',
+          query: to.query,
+        }),
       },
     ]
   },

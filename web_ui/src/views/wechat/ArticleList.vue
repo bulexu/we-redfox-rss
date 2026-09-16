@@ -6,8 +6,8 @@
 import { onBeforeUnmount, onMounted } from 'vue'
 import { ref } from 'vue'
 import { computed } from 'vue'
-import ArticleList from '@/views/article/ArticleListDesktop.vue'
-import ArticleListMobile from '@/views/article/ArticleListMobile.vue'
+import ArticleList from '@/views/wechat/ArticleListDesktop.vue'
+import ArticleListMobile from '@/views/wechat/ArticleListMobile.vue'
 const isMobile = ref(window.innerWidth < 768)
 const handleResize = () => {
   isMobile.value = window.innerWidth < 768

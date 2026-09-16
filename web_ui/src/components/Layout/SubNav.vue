@@ -56,10 +56,10 @@ const wechatItems: SubItem[] = [
 ]
 
 // 小红书 (XHS) 二级菜单
+// /xhs/articles 已合并到 /xhs/feeds 的右侧面板, 二级菜单只保留入口与添加
 const xhsItems: SubItem[] = [
   { key: '/xhs/feeds', label: '订阅管理', icon: IconHome },
   { key: '/xhs/subscriptions', label: '添加订阅', icon: IconPlus },
-  { key: '/xhs/articles', label: '笔记浏览', icon: IconList },
 ]
 
 // 系统管理的二级菜单

@@ -1,5 +1,5 @@
 <template>
-  <a-spin :loading="fullLoading" tip="正在刷新..." size="large">
+  <a-spin :loading="fullLoading" tip="正在刷新...">
     <a-layout class="article-list">
       <a-layout-content :style="{ padding: '20px', width: '100%', height: '100%', overflow: 'auto' }" @scroll="handleScroll">
         <a-page-header 

@@ -11,8 +11,8 @@
       <!-- 关键词订阅 -->
       <a-tab-pane key="keyword" title="关键词">
         <a-card>
-          <a-form :model="kwForm" layout="vertical" @submit.prevent="handleCreateKeyword">
-            <a-form-item label="搜索关键词" field="keyword" required>
+          <a-form :model="kwForm" layout="vertical" @submit="handleCreateKeyword">
+            <a-form-item label="搜索关键词" field="target" required>
               <a-input
                 v-model="kwForm.target"
                 placeholder="例如: 口红色号 / 露营装备"
@@ -42,7 +42,7 @@
       <!-- 账号订阅 (先搜索 userId 再订阅) -->
       <a-tab-pane key="account" title="账号">
         <a-card>
-          <a-form :model="userSearch" layout="inline" @submit.prevent="handleSearchUser">
+          <a-form :model="userSearch" layout="inline" @submit="handleSearchUser">
             <a-form-item label="搜索昵称 / 关键词" field="keyword">
               <a-input
                 v-model="userSearch.keyword"
@@ -66,18 +66,18 @@
           >
             <template #avatar="{ record }">
               <a-avatar :size="32">
-                <img v-if="record.avatar || record.image" :src="record.avatar || record.image" />
+                <img v-if="record.accountAvatar || record.avatar || record.image" :src="record.accountAvatar || record.avatar || record.image" />
               </a-avatar>
             </template>
             <template #userId="{ record }">
-              <span class="target-text">{{ record.userId || record.user_id || record.id }}</span>
+              <span class="target-text">{{ record.accountId || record.userId || record.user_id || record.id }}</span>
             </template>
             <template #action="{ record }">
               <a-button
                 size="mini"
                 type="primary"
                 @click="subscribeUser(record)"
-                :loading="subTarget === (record.userId || record.user_id || record.id)"
+                :loading="subTarget === (record.accountId || record.userId || record.user_id || record.id)"
               >
                 订阅
               </a-button>
@@ -130,12 +130,8 @@ const handleCreateKeyword = async () => {
       max_fetch_count: kwForm.max_fetch_count,
       refresh_interval_hours: kwForm.refresh_interval_hours,
     })
-    if (res.code === 0) {
-      Message.success(res.message || '已订阅, 首次采集已提交')
-      router.push('/xhs/feeds')
-    } else {
-      throw new Error(res.message || '订阅失败')
-    }
+    Message.success('已订阅, 首次采集已提交')
+    router.push('/xhs/feeds')
   } catch (err: any) {
     Message.error(err.message || '订阅失败')
   } finally {
@@ -152,7 +148,7 @@ const subTarget = ref<string | null>(null)
 
 const userColumns = [
   { title: '头像', slotName: 'avatar', width: 80 },
-  { title: '昵称', dataIndex: 'nickname' },
+  { title: '昵称', dataIndex: 'accountName' },
   { title: 'userId', slotName: 'userId' },
   { title: '操作', slotName: 'action', width: 100 },
 ]
@@ -166,12 +162,8 @@ const handleSearchUser = async () => {
   searched.value = false
   try {
     const res = await searchXhsUsers(userSearch.keyword.trim())
-    if (res.code === 0) {
-      userResults.value = res.data.list || []
-      searched.value = true
-    } else {
-      throw new Error(res.message || '搜索失败')
-    }
+    userResults.value = res.list || []
+    searched.value = true
   } catch (err: any) {
     Message.error(err.message || '搜索失败')
   } finally {
@@ -180,7 +172,7 @@ const handleSearchUser = async () => {
 }
 
 const subscribeUser = async (record: XhsUser) => {
-  const userId = record.userId || record.user_id || record.id
+  const userId = record.accountId || record.userId || record.user_id || record.id
   if (!userId) {
     Message.error('用户记录缺少 userId')
     return
@@ -190,15 +182,11 @@ const subscribeUser = async (record: XhsUser) => {
     const res = await createXhsFeed({
       kind: 'account',
       target: String(userId),
-      name: record.nickname || undefined,
-      avatar: record.avatar || record.image || undefined,
+      name: record.accountName || record.nickname || undefined,
+      avatar: record.accountAvatar || record.avatar || record.image || undefined,
     })
-    if (res.code === 0) {
-      Message.success(res.message || '已订阅')
-      router.push('/xhs/feeds')
-    } else {
-      throw new Error(res.message || '订阅失败')
-    }
+    Message.success('已订阅')
+    router.push('/xhs/feeds')
   } catch (err: any) {
     Message.error(err.message || '订阅失败')
   } finally {

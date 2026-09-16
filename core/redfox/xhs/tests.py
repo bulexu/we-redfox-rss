@@ -82,7 +82,7 @@ def _make_fake_notes(prefix: str, count: int, base_dt: datetime) -> List[Dict[st
     return out
 
 
-def _build_xhs_test_feed(session, feed_id: str) -> Any:
+def _build_xhs_test_feed(session, feed_id: str, target: str = "") -> Any:
     from core.models.feed import Feed
     feed = Feed(
         id=feed_id,
@@ -98,6 +98,13 @@ def _build_xhs_test_feed(session, feed_id: str) -> Any:
         error_count=0,
         last_error=None,
         last_error_at=None,
+        # keyword 类 feed.id 是 uuid, 真正的 keyword 在 target 里;
+        # 这里默认从 id suffix 拆 (向后兼容老的 round-trip 测试)。
+        target=target or (
+            feed_id[len("XHS_KW_"):] if feed_id.startswith("XHS_KW_") else (
+                feed_id[len("XHS_U_"):] if feed_id.startswith("XHS_U_") else None
+            )
+        ),
     )
     session.merge(feed)
     session.commit()
@@ -137,11 +144,21 @@ def test_normalize() -> bool:
 
 def test_split_build_roundtrip() -> bool:
     from core.redfox.xhs.sync import _split_feed_id, build_feed_id
-    for kind, target in [("keyword", "口红"), ("account", "5e3a8c9d")]:
-        fid = build_feed_id(kind, target)
-        k, t = _split_feed_id(fid)
-        assert (k, t) == (kind, target), (k, t)
-    print("  ✓ _split_feed_id / build_feed_id round-trip")
+    # account 类型: feed.id = XHS_U_<userId>, suffix 仍是 userId, 可 round-trip
+    fid = build_feed_id("account", "5e3a8c9d")
+    k, t = _split_feed_id(fid)
+    assert (k, t) == ("account", "5e3a8c9d"), (k, t)
+
+    # keyword 类型: feed.id = XHS_KW_<uuid>, suffix 不是 keyword 原文 (真正的 keyword 存 feed.target)。
+    # 这里只验证 prefix 正确, uuid 长度合理。
+    fid = build_feed_id("keyword", "口红")
+    assert fid.startswith("XHS_KW_"), fid
+    k, suffix = _split_feed_id(fid)
+    assert k == "keyword", k
+    assert len(suffix) == 16, suffix  # uuid hex[:16]
+    assert suffix != "口红", "suffix 不应是原始 keyword"
+
+    print("  ✓ _split_feed_id / build_feed_id (keyword uuid + account round-trip)")
     return True
 
 

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -57,9 +58,12 @@ DEFAULT_SORT_TYPE = "2"
 # ---------- feed id 解析 ----------
 
 def _split_feed_id(feed_id: str) -> tuple[str, str]:
-    """从 ``XHS_KW_<keyword>`` / ``XHS_U_<user_id>`` 拆出 (kind, target)。
+    """从 ``XHS_KW_<uuid-or-keyword>`` / ``XHS_U_<user_id>`` 拆出 (kind, target_id_suffix)。
 
-    返回 ``("keyword", keyword)`` 或 ``("account", user_id)``。
+    仅按 prefix 拆分,  不再用 suffix 作为检索值:  新数据 suffix 是 uuid,
+    真正的检索值 (keyword / userId) 存在 ``feed.target`` 里。
+
+    老数据 (suffix 是中文 keyword 或纯数字 userId) 仍能拆出 suffix 作为 fallback。
     """
     if not feed_id:
         raise ValueError("feed.id 为空")
@@ -71,9 +75,15 @@ def _split_feed_id(feed_id: str) -> tuple[str, str]:
 
 
 def build_feed_id(kind: str, target: str) -> str:
-    """构造 XHS feed.id (与解析互为逆操作)。"""
+    """构造 XHS feed.id。
+
+    * ``kind="keyword"`` → ``XHS_KW_<uuid>`` (避免中文/特殊字符进主键, 也方便 URL 编码)。
+      原始 keyword 字符串由调用方写入 ``feed.target``。
+    * ``kind="account"`` → ``XHS_U_<userId>`` (userId 本身就是平台唯一键, 直接拼接 OK)。
+      ``feed.target`` 也存一份 userId 便于统一读取。
+    """
     if kind == "keyword":
-        return f"{XHS_KW_PREFIX}{target}"
+        return f"{XHS_KW_PREFIX}{uuid.uuid4().hex[:16]}"
     if kind == "account":
         return f"{XHS_U_PREFIX}{target}"
     raise ValueError(f"未知 kind: {kind!r}")
@@ -249,7 +259,11 @@ def do_job_xhs(feed: Feed, is_test: bool = False) -> None:
             )
             return
 
-        kind, target = _split_feed_id(feed.id)
+        kind, _id_suffix = _split_feed_id(feed.id)
+        # 优先用 feed.target (新数据); 老数据没填 target 时 fallback 到 id suffix (向后兼容)。
+        target = (getattr(feed, "target", None) or _id_suffix).strip()
+        if not target:
+            raise ValueError(f"feed {feed.id} target 为空, 无法同步")
         last_publish_time = int(getattr(feed, "last_publish_time", 0) or 0)
         last_cursor = getattr(feed, "last_cursor", None)
         max_count = int(getattr(feed, "max_fetch_count", 20) or 20)

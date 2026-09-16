@@ -1,5 +1,5 @@
 <template>
-  <a-spin :loading="fullLoading" tip="正在刷新..." size="large" style="width: 100%; height: 100%;">
+  <a-spin :loading="fullLoading" tip="正在刷新..." style="width: 100%; height: 100%;">
     <a-layout class="article-list">
       
       <a-layout-sider :width="300"

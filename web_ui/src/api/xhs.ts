@@ -79,12 +79,22 @@ export interface XhsArticleListResult {
 }
 
 export interface XhsUser {
-  // 字段命名取自 redfox /search/users 返回结构 (具体字段名以实际为准)
+  // 实际返回字段 (redfox /search/users): accountAvatar / accountName / accountId 等
+  accountAvatar?: string
+  accountName?: string
+  accountId?: string
+  accountFans?: number
+  accountLikes?: number
+  accountCollectes?: number
+  accountTotalWorks?: number
+  accountDesc?: string
+  // 历史字段兼容 (早期 web 风格)
   userId?: string
   user_id?: string
   id?: string
   nickname?: string
   avatar?: string
+  image?: string
   fans?: number
   [k: string]: any
 }

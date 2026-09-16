@@ -36,18 +36,18 @@
     <!-- 公众号信息 -->
     <div class="mp-info">
         <div style="width: 48px; height: 48px; background: #e9ecef; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
-                <img src="{{article.mp_cover or '/static/logo.svg'}}" alt="{{article.title}}" width="50px"/> 
+                <img src="{{article.cover or '/static/logo.svg'}}" alt="{{article.title}}" width="50px"/>
         </div>
         <div style="flex: 1;">
             <div style="font-weight: 500; font-size: 1.1rem;">
-                  <a href="/views/articles?mp_id={{article.mp_id}}" target="_blank"  style="font-size: 0.9rem;">{{article.mp_name}}</a>
+                  <a href="/views/articles?mp_id={{article.feed_id}}" target="_blank"  style="font-size: 0.9rem;">{{article.name}}</a>
             </div>
-          
-            {% if article.mp_intro %}
-            <div class="text-muted" style="font-size: 0.9rem;">{{article.mp_intro}}</div>
+
+            {% if article.intro %}
+            <div class="text-muted" style="font-size: 0.9rem;">{{article.intro}}</div>
             {% endif %}
         </div>
-       
+
     </div>
 </div>
 

@@ -11,6 +11,7 @@
 
 <div class="grid grid-3">
     {% for feed in mps['feeds'] %}
+    <a href="/views/articles?mp_id={{feed.id}}"></a>
     <div class="card">
         <div style="text-align: center; margin-bottom: 1rem;">
             {% if feed.cover %}
@@ -19,7 +20,7 @@
             {% endif %}
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h3 style="text-align: center;width:100%;"><a href="/views/articles?mp_id={{feed.id}}">{{feed.name}}</a></h3>
+            <h3 style="text-align: center;width:100%;">{{feed.name}}</a></h3>
         </div>
         <div style="margin: 1rem 0;">
         </div>

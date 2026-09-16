@@ -24,14 +24,14 @@
 {% if info %}
 <div class="mp-info">
     <div style="width: 48px; height: 48px; background: #e9ecef; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
-        {% if info.mp_cover %}
-            <img src="{{info.mp_cover}}" alt="{{info.mp_name}}" width="50px"/>
+        {% if info.cover %}
+            <img src="{{info.cover}}" alt="{{info.name}}" width="50px"/>
         {% endif %}
     </div>
     <div style="flex: 1;">
-        <div style="font-weight: 500; font-size: 1.1rem;">{{info.mp_name}}</div>
-        {% if info.mp_intro %}
-        <div class="text-muted" style="font-size: 0.9rem;">{{info.mp_intro}}</div>
+        <div style="font-weight: 500; font-size: 1.1rem;">{{info.name}}</div>
+        {% if info.intro %}
+        <div class="text-muted" style="font-size: 0.9rem;">{{info.intro}}</div>
         {% endif %}
     </div>
 </div>
@@ -74,10 +74,10 @@
             <p class="text-muted article-desc">{{article.description}}</p>
             {% endif %}
             <div class="article-meta">
-                <a href="/views/articles?mp_id={{article.mp_id}}">
+                <a href="/views/articles?mp_id={{article.feed_id}}">
                 <span>
-                    <img src="{{article.mp_cover}}" style="width: 20px; height: 20px; border-radius: 50%; margin-right: 0.5rem;"/>
-                     {{article.mp_name}}
+                    <img src="{{article.cover}}" style="width: 20px; height: 20px; border-radius: 50%; margin-right: 0.5rem;"/>
+                     {{article.name}}
                 </span>
                 </a>
                 <span>🕐 {{article.publish_time}}</span>

@@ -533,8 +533,8 @@ async def list_pending_content(
     此接口供 RPA 客户端（八爪鱼等外部系统）通过 Access Key
     拉取待补齐正文的文章清单。
 
-    返回字段精简为 RPA 所需子集：id / title / url / mp_id /
-    mp_name / publish_time，不返回 content 等大字段以减少响应体积。
+    返回字段精简为 RPA 所需子集：id / title / url / feed_id /
+    name / publish_time，不返回 content 等大字段以减少响应体积。
     """
     session = DB.get_session()
     try:

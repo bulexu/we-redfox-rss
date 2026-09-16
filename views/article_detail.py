@@ -112,7 +112,7 @@ async def article_detail_view(
         
         # 构建面包屑
         breadcrumb = [
-            {"name": feed.name, "url": f"/views/articles?mp_id={article_data['mp_id']}"},
+            {"name": feed.name, "url": f"/views/articles?mp_id={article_data['feed_id']}"},
             {"name": article_data["title"][:50] + "..." if len(article_data["title"]) > 50 else article_data["title"], "url": None}
         ]
         

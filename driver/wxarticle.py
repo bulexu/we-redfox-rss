@@ -157,7 +157,7 @@ class WXArticleFetcher:
         # 检查各种异常情况
         if "当前环境异常，完成验证后即可继续访问" in body_text:
             # 写入 Redis 统计（供 /env-exception 页面查询）
-            self._record_env_exception_async(page=page, url=url)
+            await self._record_env_exception_async(page=page, url=url)
             info["content"] = ""
             info["fetch_error"] = "当前环境异常，完成验证后即可继续访问"
             return info

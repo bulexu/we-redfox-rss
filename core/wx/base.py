@@ -274,7 +274,7 @@ class WxGather:
                 
                 art={
                     "id":str(data['id']),  # 文章唯一标识ID
-                    "mp_id":data['mp_id'],  # 公众号ID
+                    "feed_id":data['mp_id'],  # 订阅源ID (公众号: MP_WXS_xxx / 小红书: XHS_KW_xxx, XHS_U_xxx)
                     "title":data['title'],  # 文章标题
                     "url":data['link'],  # 文章链接地址
                     "pic_url":data['cover'],  # 封面图片URL
@@ -447,10 +447,16 @@ class WxGather:
             rss=RSS()
             mp_id=""
             try:
-                mp_id=self.articles[0]['mp_id']
-            except:
+                # art dict 走 feed_id 键 (Article 模型对齐),  但 RSS 缓存仍按
+                # mp_id 维度清理,  兼容取值:  优先 feed_id,  兜底 mp_id。
+                mp_id = (
+                    self.articles[0].get("feed_id")
+                    or self.articles[0].get("mp_id")
+                    or ""
+                )
+            except Exception:
                 pass
-            rss.clear_cache(mp_id=mp_id)  
+            rss.clear_cache(mp_id=mp_id)
         
         # 输出执行时间统计
         if execution_time > 0:

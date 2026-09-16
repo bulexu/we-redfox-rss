@@ -46,7 +46,7 @@ def build_article_url(article: Any) -> str:
 
     origin_id = extract_origin_article_id(
         getattr(article, "id", ""),
-        getattr(article, "mp_id", ""),
+        getattr(article, "feed_id", "") or getattr(article, "mp_id", ""),
     )
     if not origin_id:
         return ""

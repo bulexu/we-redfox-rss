@@ -128,7 +128,7 @@ def do_job(mp=None,task:MessageTask=None,isTest=False):
             if task and not isTest:
                 tracker.record_mp_result(
                     task_id=task.id,
-                    name=mp.name,
+                    mp_name=mp.name,
                     success=success,
                     article_count=count,
                     error=error_msg

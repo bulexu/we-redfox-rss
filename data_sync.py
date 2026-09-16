@@ -480,6 +480,57 @@ class DatabaseSynchronizer:
                 except Exception as exc:  # noqa: BLE001
                     self.logger.warning(f"迁移 feeds.{old_col} 时出错: {exc}")
 
+        # 7b. feeds 旧列 (mp_name/mp_cover/mp_intro) 与新列同时存在的兜底:
+        #     现象 — SQLAlchemy 启动时已根据新 model 自动创建 ``name``/``cover``/``intro``
+        #     三列 (旧数据并未迁移),  第 7 步因 ``new_col`` 已存在被跳过,  导致
+        #     /api/v1/wx/mps 返回的 name/cover/intro 全部为 NULL。
+        #     处理:
+        #       1. 把 ``mp_name`` 的非空数据复制到 ``name`` (同名 ``mp_cover``/``mp_intro``
+        #          处理同理)。
+        #       2. 复制完成后 ``mp_name`` 已无存在价值,  DROP COLUMN。
+        #     兼容 SQLite 3.35+ (DROP COLUMN 原生支持) 与 PG/MySQL。
+        for old_col, new_col in [
+            ("mp_name", "name"),
+            ("mp_cover", "cover"),
+            ("mp_intro", "intro"),
+        ]:
+            if _has_column("feeds", old_col) and _has_column("feeds", new_col):
+                self.logger.info(
+                    f"feeds 同时存在 {old_col} + {new_col},  触发兜底迁移"
+                )
+                try:
+                    with self.engine.begin() as conn:
+                        # 1) 复制非空数据 (只在 new_col 为 NULL 时覆盖,  避免
+                        #    用户已经在新列手动改过的值被覆盖)
+                        conn.execute(text(
+                            f"UPDATE feeds SET {new_col} = {old_col} "
+                            f"WHERE {new_col} IS NULL AND {old_col} IS NOT NULL"
+                        ))
+                        # 2) DROP 旧列
+                        if is_sqlite:
+                            conn.execute(text(
+                                f"ALTER TABLE feeds DROP COLUMN {old_col}"
+                            ))
+                        else:
+                            conn.execute(text(
+                                f"ALTER TABLE feeds DROP COLUMN {old_col}"
+                            ))
+                        # 3) 重建索引 (SQLAlchemy 不会自动重建已存在但失去
+                        #    底层列的索引,  防止 index 引用不存在的列报错)
+                        try:
+                            conn.execute(text(
+                                f"DROP INDEX IF EXISTS ix_feeds_{old_col}"
+                            ))
+                        except SQLAlchemyError:
+                            pass
+                    self.logger.info(
+                        f"feeds.{old_col} 数据已迁移至 {new_col} 并 DROP"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    self.logger.warning(
+                        f"feeds.{old_col} → {new_col} 兜底迁移时出错: {exc}"
+                    )
+
     def _sqlite_rebuild_table_with_rename(self, table_name: str, old_col: str, new_col: str):
         """SQLite 旧版本重建表并重命名列。
 

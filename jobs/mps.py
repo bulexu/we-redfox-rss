@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
+from typing import List, Optional, Tuple
 from core.models.article import Article
 from .article import UpdateArticle,Update_Over
 import core.db as db
 from core.wx import WxGather
 from core.log import logger
 from core.task import TaskScheduler
-from core.models.feed import Feed
+from core.models.feed import Feed, PLATFORM_MP, PLATFORM_XHS, infer_platform_from_id
 from core.config import cfg,DEBUG
 from core.print import print_info,print_success,print_error
 from core.redis_client import clear_env_exception
@@ -37,102 +38,153 @@ from .webhook import web_hook
 from core.redfox.xhs import do_job_xhs
 from core.redfox.xhs.sync import XHS_KW_PREFIX, XHS_U_PREFIX
 interval=int(cfg.get("interval",60)) # 兼容历史配置;get_Articles 已不再读取
-def do_job(mp=None,task:MessageTask=None,isTest=False):
-        """执行单个公众号的采集任务"""
-        # TaskQueue.add_task(test,info=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        # print("执行任务", task.target_feed_ids)
-        print(f"执行任务 (测试模式: {isTest})")
-        
-        # 初始化变量，确保在所有分支中都有定义
-        count = 0
-        all_count = 0
-        mock_articles = []
-        success = False
-        error_msg = None
-        
-        try:
-            if isTest:
-                # 测试模式使用模拟数据
-                mock_articles = [{
-                    "id": "test-article-001",
-                    "id": mp.id,
-                    "title": "测试文章标题",
-                    "pic_url": "https://via.placeholder.com/300x200",
-                    "url": "https://example.com/test-article",
-                    "description": "这是一篇测试文章的描述内容，用于测试webhook功能是否正常。",
-                    "publish_time": (datetime.now() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
-                    "content": "<p>这是测试文章的正文内容。</p>"
-                }]
-                count = 1
-                success = True
-            else:
-                wx=WxGather().Model()
-                try:
-                    wx.get_Articles(mp.faker_id,CallBack=UpdateArticle,Mps_id=mp.id,Mps_title=mp.name, MaxPage=1,Over_CallBack=Update_Over)
-                    success = True
-                except Exception as e:
-                    print_error(f"获取文章失败 [{mp.name}]: {e}")
-                    error_msg = str(e)
-                    # 不抛出异常，继续执行后续流程
-                finally:
-                    count = wx.all_count() if wx else 0
-                    mock_articles = wx.articles if wx else []
-                    all_count += count
 
-            # 执行 webhook 通知
+
+def _fetch_feed(feed: Feed, isTest: bool = False) -> Tuple[bool, int, List[dict]]:
+    """采集单个 feed 的最新内容 (跨平台派发)。
+
+    平台派发规则:
+      * ``platform == 'xhs'`` 或 id 以 ``XHS_KW_/XHS_U_`` 开头
+        → 走 ``do_job_xhs``, 返回 ``written`` (int) 和 normalize 后的 notes dict 列表
+      * 其他 (默认 'mp')
+        → 走 ``WxGather`` 公众号采集
+
+    Returns:
+        ``(success, count, articles)`` —— ``success`` 仅代表 fetcher 自身没有抛异常,
+        不代表"抓到了文章" (0 条数据是合法的)。
+        ``articles`` 是 dict 列表, 用于后续 webhook 模板渲染。xhs path 返回
+        ``_normalize_note`` 之后的字段 (id/title/content/...) 兼容
+        :class:`MessageWebHook` 模板占位符。
+    """
+    platform = feed.platform or infer_platform_from_id(feed.id)
+
+    if platform == PLATFORM_XHS:
+        # xhs 路径: do_job_xhs 已自带错误计数 / 自动暂停, 内部捕获 RedfoxError
+        # 后会写库, 然后 raise 让 TaskQueue 重试。这里只接住, 不抛。
+        try:
+            notes = do_job_xhs(feed, isTest)
+        except Exception as exc:  # noqa: BLE001
+            print_error(f"[xhs] 采集失败 [{feed.name}]: {exc}")
+            return False, 0, []
+        return True, len(notes), notes
+
+    # ===== 公众号路径 =====
+    if isTest:
+        mock_articles = [{
+            "id": f"test-article-{feed.id}",
+            "title": "测试文章标题",
+            "pic_url": "https://via.placeholder.com/300x200",
+            "url": "https://example.com/test-article",
+            "description": "这是一篇测试文章的描述内容，用于测试webhook功能是否正常。",
+            "publish_time": (datetime.now() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
+            "content": "<p>这是测试文章的正文内容。</p>",
+        }]
+        return True, 1, mock_articles
+
+    try:
+        wx = WxGather().Model()
+        wx.get_Articles(
+            feed.faker_id,
+            CallBack=UpdateArticle,
+            Mps_id=feed.id,
+            Mps_title=feed.name,
+            MaxPage=1,
+            Over_CallBack=Update_Over,
+        )
+        return True, (wx.all_count() if wx else 0), (wx.articles if wx else [])
+    except Exception as exc:  # noqa: BLE001
+        print_error(f"获取文章失败 [{feed.name}]: {exc}")
+        return False, 0, []
+
+
+def _execute_feed_for_task(feed: Feed, task: Optional[MessageTask] = None, isTest: bool = False):
+    """对单个 feed 执行完整一轮:采集 + webhook + tracker + 级联上报 (跨平台)。
+
+    流程:
+      1. ``_fetch_feed`` 跨平台派发采集, 拿到 ``(success, count, articles)``。
+      2. 仅在 ``task`` 配置了 ``web_hook_url`` 时跑 webhook (避免给无 url 的全局任务触发出站请求)。
+         xhs 全局任务 (XHS_GLOBAL_TASK_ID) 没有 webhook, 自然跳过。
+      3. 成功后清掉该 feed 的环境异常记录 (mp 路径生效,xhs 自身已有 error_count)。
+      4. 有 task + 非测试时跑 :class:`MessageTaskTracker` 进度记录 + 级联上报。
+    """
+    print(f"执行任务 (测试模式: {isTest})")
+
+    count = 0
+    articles: List[dict] = []
+    success = False
+    error_msg: Optional[str] = None
+
+    try:
+        success, count, articles = _fetch_feed(feed, isTest=isTest)
+
+        # 仅在 task 配置了 webhook url 时才触发
+        if task and (task.web_hook_url or "").strip():
             try:
                 from jobs.webhook import MessageWebHook
-                tms=MessageWebHook(task=task,feed=mp,articles=mock_articles)
+                tms = MessageWebHook(task=task, feed=feed, articles=articles)
                 web_hook(tms, is_test=isTest)
-                print_success(f"任务({task.id})[{mp.name}]执行成功,{count}成功条数")
-                
-                # 采集成功，清除该公众号的环境异常记录
-                if not isTest and success and count > 0:
-                    try:
-                        clear_env_exception(mp_id=mp.id)
-                    except Exception as e:
-                        print_error(f"清除环境异常记录失败: {e}")
-                        
-            except Exception as e:
-                print_error(f"Webhook执行失败 [{mp.name}]: {e}")
+                print_success(f"任务({task.id})[{feed.name}]执行成功,{count}成功条数")
+            except Exception as exc:  # noqa: BLE001
+                print_error(f"Webhook执行失败 [{feed.name}]: {exc}")
                 if not error_msg:
-                    error_msg = f"Webhook: {str(e)}"
-            
-            # 级联节点：上报任务执行结果到父节点
-            from jobs.cascade_sync import cascade_sync_service
-            from core.loop import submit_async
-            if not isTest and mock_articles:
-                try:
-                    result_data = [{
-                        "id": mp.id,
-                        "name": mp.name,
-                        "article_count": len(mock_articles) if not isTest else 1,
-                        "success_count": count if not isTest else 1,
-                        "timestamp": datetime.now().isoformat()
-                    }]
-                    # 通过主事件循环跨线程上报,不阻塞当前 worker 线程
-                    submit_async(cascade_sync_service.report_task_result(task.id, result_data))
-                except Exception as e:
-                    print_error(f"上报任务结果失败: {str(e)}")
-                    
-        except Exception as e:
-            error_msg = str(e)
-            print_error(f"任务执行异常 [{mp.name}]: {e}")
-            raise  # 重新抛出，让队列的重试机制处理
-        
-        finally:
-            # 记录执行结果到追踪器。
-            # 注意:执行无异常但抓到 0 条数据(账号近期未更新)不算失败。
-            # 只有 fetcher / webhook 真正抛异常才算 failed,与上方
-            # ``print_success(f"任务(...)执行成功,{count}成功条数")`` 保持一致。
-            if task and not isTest:
-                tracker.record_mp_result(
-                    task_id=task.id,
-                    mp_name=mp.name,
-                    success=success,
-                    article_count=count,
-                    error=error_msg
-                )
+                    error_msg = f"Webhook: {exc}"
+
+        # mp 路径成功后清环境异常记录
+        if not isTest and success and count > 0:
+            try:
+                clear_env_exception(mp_id=feed.id)
+            except Exception as exc:  # noqa: BLE001
+                print_error(f"清除环境异常记录失败: {exc}")
+
+        # 级联节点: 上报任务执行结果到父节点 (仅在 task + 有抓取数据时上报)
+        if not isTest and task and articles:
+            try:
+                from jobs.cascade_sync import cascade_sync_service
+                from core.loop import submit_async
+                result_data = [{
+                    "id": feed.id,
+                    "name": feed.name,
+                    "article_count": len(articles),
+                    "success_count": count,
+                    "timestamp": datetime.now().isoformat(),
+                }]
+                # 通过主事件循环跨线程上报,不阻塞当前 worker 线程
+                submit_async(cascade_sync_service.report_task_result(task.id, result_data))
+            except Exception as exc:  # noqa: BLE001
+                print_error(f"上报任务结果失败: {exc}")
+
+    except Exception as exc:  # noqa: BLE001
+        error_msg = str(exc)
+        print_error(f"任务执行异常 [{feed.name}]: {exc}")
+        raise
+
+    finally:
+        # 记录执行结果到追踪器 (仅 task + 非测试场景)。
+        # 注意:无异常但抓到 0 条数据 (账号近期未更新) 不算 failed,
+        # 只有 fetcher / webhook 真正抛异常才算 failed。
+        if task and not isTest:
+            tracker.record_mp_result(
+                task_id=task.id,
+                mp_name=feed.name,
+                success=success,
+                article_count=count,
+                error=error_msg,
+            )
+
+
+# ===== 旧名兼容 (级联模块还在 import) =====
+# ``do_job(mp, task, isTest)`` 与 ``_execute_feed_for_task`` 语义等价,
+# 保留别名避免级联路径代码改动过大。``mp`` 参数名是历史遗留 — 现在
+# ``_execute_feed_for_task`` 第一个参数已重命名为 ``feed``, 但保留
+# ``mp`` 作为关键字参数别名方便老调用方。
+
+def do_job(mp=None, task: MessageTask = None, isTest: bool = False):
+    """旧名兼容 — 实际委托给 :func:`_execute_feed_for_task`。
+    级联模块 :mod:`jobs.cascade_sync` / :mod:`jobs.cascade_task_dispatcher` 仍在用。
+    """
+    if mp is None:
+        raise ValueError("do_job(mp=...) 不能为空")
+    return _execute_feed_for_task(mp, task=task, isTest=isTest)
 
 from core.queue import TaskQueue
 
@@ -266,17 +318,17 @@ def _run_batch(feeds, task, isTest, max_workers):
     def _run_with_subtask(feed):
         """包一层:每个 feed 实际执行前注册,结束后标记完成/失败。
 
-        不在 ``finally`` 里 ``remove_subtask`` —— 因为 :func:`do_job` 内部
+        不在 ``finally`` 里 ``remove_subtask`` —— 因为 :func:`_execute_feed_for_task` 内部
         已通过 :class:`MessageTaskTracker` 调用 :meth:`TaskQueue.mark_subtask_completed`,
         把 subtask 状态切到 ``completed`` / ``failed`` 并保留到 batch 结束。
         这里再 remove 会立即把刚标记的状态擦掉,前端看不到完成态。
 
-        ``do_job`` 通常不抛异常(fetcher 错误已在内部捕获);万一真抛出来,
-        这里兜底标 failed 后再 rethrow,让外层 :func:`_run_batch` 记录。
+        ``_execute_feed_for_task`` 通常不抛异常(fetcher 错误已在内部捕获);
+        万一真抛出来,这里兜底标 failed 后再 rethrow,让外层 :func:`_run_batch` 记录。
         """
         TaskQueue.add_subtask(feed.name)
         try:
-            do_job(feed, task, isTest)
+            _execute_feed_for_task(feed, task, isTest)
         except Exception as unhandled_exc:  # noqa: BLE001
             TaskQueue.mark_subtask_completed(
                 feed.name,
@@ -443,8 +495,9 @@ def _query_xhs_feeds() -> list[Feed]:
 def _run_xhs_batch(feeds, task, isTest):
     """并发执行一批 XHS feed 的采集 (供 ``TaskQueue`` 调用)。
 
-    与 ``_run_batch`` (公众号侧) 结构对称,  但 worker 直接是 ``do_job_xhs``
-    而不是 ``do_job``,  而且不挂 webhook (XHS 暂无 MessageTask.web_hook 语义)。
+    与 ``_run_batch`` (公众号侧) 结构对称。走 :func:`_execute_feed_for_task`
+    统一入口,内部 ``_fetch_feed`` 按 platform 分派到 ``do_job_xhs``。
+    当前 XHS 全局任务未配置 ``web_hook_url``,webhook 步骤会自动跳过。
     """
     if not feeds:
         return
@@ -460,7 +513,7 @@ def _run_xhs_batch(feeds, task, isTest):
     def _run_with_subtask(feed):
         TaskQueue.add_subtask(feed.name)
         try:
-            do_job_xhs(feed, isTest)
+            _execute_feed_for_task(feed, task, isTest)
         except Exception as unhandled_exc:  # noqa: BLE001
             TaskQueue.mark_subtask_completed(
                 feed.name,

@@ -243,12 +243,17 @@ def _upsert_articles(session, feed_id: str, normalized_notes: List[Dict[str, Any
 
 # ---------- 主入口 ----------
 
-def do_job_xhs(feed: Feed, is_test: bool = False) -> None:
+def do_job_xhs(feed: Feed, is_test: bool = False) -> List[Dict[str, Any]]:
     """单个 XHS feed 的增量同步入口。
 
     Args:
         feed:  XHS_KW_* 或 XHS_U_* 前缀的 Feed 对象 (数据库已有记录)
         is_test:  测试模式,  跳过 error_count / status 自动暂停逻辑
+
+    Returns:
+        本次新写入/更新的笔记 (normalize 后的 dict 列表)。
+        返回空列表表示 skip (status=0) 或已同步到水印。
+        异常路径 raise, 由调用方 (TaskQueue) 重试。
     """
     session = DB.get_session()
     try:
@@ -257,7 +262,7 @@ def do_job_xhs(feed: Feed, is_test: bool = False) -> None:
             print_info(
                 f"[xhs] skip: feed {feed.id} status={feed.status} (已暂停)"
             )
-            return
+            return []
 
         kind, _id_suffix = _split_feed_id(feed.id)
         # 优先用 feed.target (新数据); 老数据没填 target 时 fallback 到 id suffix (向后兼容)。
@@ -292,7 +297,7 @@ def do_job_xhs(feed: Feed, is_test: bool = False) -> None:
         if db_feed is None:
             print_warning(f"[xhs] feed {feed.id} 不存在, 跳过")
             session.rollback()
-            return
+            return []
         db_feed.last_publish_time = new_last_pt
         db_feed.last_cursor = new_last_cursor
         db_feed.sync_time = int(time.time())
@@ -306,6 +311,8 @@ def do_job_xhs(feed: Feed, is_test: bool = False) -> None:
             f"[xhs] ok feed={feed.id} written={written} "
             f"new_last_pt={new_last_pt} cursor={new_last_cursor}"
         )
+
+        return notes
 
     except RedfoxError as exc:
         # 整次失败:  不 commit,  异常向上抛,  走 TaskQueue retry。

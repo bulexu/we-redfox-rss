@@ -122,41 +122,37 @@
           :show-back="false">
           <template #extra>
             <a-space>
-              <!-- 聚合视图 -->
+              <!-- 聚合视图：仅展示标签 + 笔记级操作 (与单 feed 视图统一)。 -->
               <template v-if="activeFeedId === ''">
                 <a-tag color="arcoblue">聚合视图</a-tag>
                 <a-tag>共 {{ articlePagination.total }} 条</a-tag>
               </template>
-              <!-- 单 feed 视图 -->
               <template v-else>
-                <a-tag :color="activeFeed?.kind === 'keyword' ? 'arcoblue' : 'green'">
-                  {{ activeFeed?.kind === 'keyword' ? '关键词' : '账号' }}
-                </a-tag>
                 <a-tag :color="activeFeed?.status ? 'green' : 'red'">
                   {{ activeFeed?.status ? '已启用' : '已禁用' }}
                 </a-tag>
-                <a-button @click="triggerSync" :loading="syncing">
-                  <template #icon><icon-refresh /></template>
-                  同步
-                </a-button>
-                <a-button @click="editFeed">
-                  <template #icon><icon-edit /></template>
-                  编辑
-                </a-button>
-                <a-button
-                  :status="activeFeed?.status ? 'warning' : 'success'"
-                  @click="toggleStatus">
-                  <template #icon>
-                    <icon-stop v-if="activeFeed?.status === 1" />
-                    <icon-play-arrow v-else />
-                  </template>
-                  {{ activeFeed?.status === 1 ? '禁用' : '启用' }}
-                </a-button>
-                <a-button status="danger" @click="deleteFeed">
-                  <template #icon><icon-delete /></template>
-                  删除
-                </a-button>
               </template>
+              <!-- RSS 订阅 (单 feed 视图可用, 聚合视图禁用, 对齐公众号 ArticleListDesktop) -->
+              <a-dropdown>
+                <a-button :disabled="activeFeedId === ''">
+                  <template #icon><icon-wifi /></template>
+                  订阅
+                  <icon-down />
+                </a-button>
+                <template #content>
+                  <a-doption @click="rssFormat = 'atom'; openRssFeed()">ATOM</a-doption>
+                  <a-doption @click="rssFormat = 'rss'; openRssFeed()">RSS</a-doption>
+                  <a-doption @click="rssFormat = 'json'; openRssFeed()">JSON</a-doption>
+                  <a-doption @click="rssFormat = 'md'; openRssFeed()">Markdown</a-doption>
+                  <a-doption @click="rssFormat = 'txt'; openRssFeed()">Text</a-doption>
+                </template>
+              </a-dropdown>
+              <!-- 批量删除 (笔记级, 与 popover 中订阅源管理操作不冲突) -->
+              <a-button type="primary" status="danger" @click="handleBatchDelete"
+                :disabled="!selectedRowKeys.length">
+                <template #icon><icon-delete /></template>
+                批量删除
+              </a-button>
             </a-space>
           </template>
         </a-page-header>
@@ -183,7 +179,15 @@
 
           <a-table :columns="articleColumns" :data="articles" :loading="articleLoading"
             :pagination="articlePagination"
-            :scroll="{ x: '100%' }"
+            :row-selection="{
+              type: 'checkbox',
+              showCheckedAll: true,
+              width: 50,
+              fixed: true,
+              checkStrictly: true,
+              onlyCurrent: false
+            }" row-key="id"
+            v-model:selectedKeys="selectedRowKeys"
             @page-change="handleArticlePageChange"
             @page-size-change="handleArticlePageSizeChange">
             <template #title="{ record }">
@@ -259,7 +263,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Message, Modal } from '@arco-design/web-vue'
-import { IconPlus, IconDelete, IconEdit, IconRefresh, IconStop, IconPlayArrow, IconCopy } from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconDelete, IconEdit, IconRefresh, IconCopy, IconWifi } from '@arco-design/web-vue/es/icon'
 import {
   listXhsFeeds,
   updateXhsFeed,
@@ -271,6 +275,7 @@ import {
   type XhsArticle,
   type XhsKind,
 } from '@/api/xhs'
+import { deleteArticle as deleteArticleApi } from '@/api/article'
 import { Avatar } from '@/utils/constants'
 import { formatTimestamp } from '@/utils/date'
 
@@ -367,6 +372,7 @@ const handleFeedClick = (id: string) => {
   activeFeedId.value = id
   articlePagination.current = 1
   articleSearchText.value = ''
+  selectedRowKeys.value = []
   loadArticles()
 }
 
@@ -375,6 +381,37 @@ const articles = ref<XhsArticle[]>([])
 const articleLoading = ref(false)
 const articleSearchText = ref('')
 const articlePagination = reactive({ current: 1, pageSize: 20, total: 0 })
+// 批量删除选中的笔记 id
+const selectedRowKeys = ref<string[]>([])
+// RSS 输出格式 (顶部订阅下拉, 单 feed 视图生效)
+const rssFormat = ref<'rss' | 'atom' | 'json' | 'md' | 'txt'>('atom')
+const openRssFeed = () => {
+  if (!activeFeedId.value) return
+  const fmt = ['rss', 'atom', 'json', 'md', 'txt'].includes(rssFormat.value)
+    ? rssFormat.value
+    : 'atom'
+  window.open(`/feed/xhs/${activeFeedId.value}.${fmt}`, '_blank')
+}
+const handleBatchDelete = () => {
+  if (!selectedRowKeys.value.length) return
+  Modal.confirm({
+    title: '确认批量删除',
+    content: `确定要删除选中的${selectedRowKeys.value.length}篇笔记吗？删除后将无法恢复。`,
+    okText: '确认',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await Promise.all(selectedRowKeys.value.map(id => deleteArticleApi(id)))
+        Message.success(`成功删除${selectedRowKeys.value.length}篇笔记`)
+        selectedRowKeys.value = []
+        loadArticles()
+      } catch (error) {
+        Message.error('删除部分笔记失败')
+      }
+    },
+    onCancel: () => Message.info('已取消批量删除操作'),
+  })
+}
 
 // 表格列: 聚合视图 (activeFeedId==='') 时多一列「来源订阅」
 interface ArticleColumn {

@@ -68,6 +68,8 @@ export interface XhsArticle {
   read_count: number
   share_count: number
   status: number
+  // 仅聚合接口 (/xhs/articles) 返回,  单 feed 接口无此字段
+  feed_name?: string
 }
 
 export interface XhsArticleListResult {
@@ -164,6 +166,15 @@ export const listXhsFeedArticles = (feed_id: string, params?: { page?: number; p
     `/xhs/feeds/${encodeURIComponent(feed_id)}/articles`,
     { params: apiParams },
   )
+}
+
+// 跨 feed 聚合笔记列表 (用于订阅列表默认“全部」视图)
+export const listXhsArticles = (params?: { page?: number; pageSize?: number }) => {
+  const apiParams = {
+    offset: (params?.page || 0) * (params?.pageSize || 20),
+    limit: params?.pageSize || 20,
+  }
+  return http.get<XhsArticleListResult>('/xhs/articles', { params: apiParams })
 }
 
 // ===== 用户搜索 (账号订阅前置) =====

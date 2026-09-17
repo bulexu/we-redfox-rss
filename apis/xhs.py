@@ -370,6 +370,65 @@ async def search_xhs_users(
 
 # ===== 笔记列表 (单 feed) =====
 
+@router.get("/articles", summary="跨 XHS 订阅聚合列出笔记（用于“全部”视图）")
+async def list_xhs_articles(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user_or_ak),
+):
+    """订阅列表“全部」选中后的聚合笔记视图。
+
+    按 ``feed_id`` 前缀 (XHS_KW_ / XHS_U_) 过滤 ``Article`` 表,
+    并在响应中补充 ``feed_name`` 供前端展示来源订阅。
+    """
+    session = DB.get_session()
+    try:
+        from core.models.article import Article, DATA_STATUS
+        from core.models.feed import Feed
+
+        # 限定 XHS feed id 前缀 (与 list_xhs_feeds 一致)
+        query = session.query(Article).filter(
+            (Article.feed_id.like(f"{XHS_KW_PREFIX}%"))
+            | (Article.feed_id.like(f"{XHS_U_PREFIX}%"))
+        )
+        # 默认排除已删除 (与公众号侧 get_articles 行为一致)
+        query = query.filter(Article.status != DATA_STATUS.DELETED)
+
+        total = query.count()
+        rows = (
+            query.order_by(Article.publish_time.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+        # 查 feed 名称映射
+        feed_ids = {a.feed_id for a in rows if a.feed_id}
+        feed_name_map: dict[str, str] = {}
+        if feed_ids:
+            for f in session.query(Feed).filter(Feed.id.in_(feed_ids)).all():
+                feed_name_map[f.id] = f.name or ""
+
+        result = []
+        for a in rows:
+            d = a.to_dict()
+            d["feed_name"] = feed_name_map.get(a.feed_id, "未知订阅")
+            result.append(d)
+
+        return success_response({
+            "list": result,
+            "total": total,
+            "page": {"limit": limit, "offset": offset},
+        })
+    except Exception as e:
+        return error_response(code=500, message=f"查询 XHS 全部笔记失败: {e}")
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
+
+
 @router.get("/feeds/{feed_id}/articles", summary="列出 XHS feed 下的笔记")
 async def list_xhs_feed_articles(
     feed_id: str,

@@ -50,7 +50,7 @@
                         {{ truncate(item.name, 12) }}
                       </a-typography-text>
                     </div>
-                    <a-tag size="mini" :color="item.kind === 'keyword' ? 'arcoblue' : 'green'">
+                    <a-tag v-if="canManageFeed(item)" size="mini" :color="item.kind === 'keyword' ? 'arcoblue' : 'green'">
                       {{ item.kind === 'keyword' ? '关键词' : '账号' }}
                     </a-tag>
                   </a-list-item>
@@ -63,43 +63,45 @@
                           <div style="font-weight: 600; font-size: 14px;">{{ item.name }}</div>
                           <div style="font-size: 12px; color: var(--color-text-3);"
                             v-if="item.target">目标: {{ item.target }}</div>
-                          <div style="font-size: 12px; color: var(--color-text-3);">ID: {{ item.id }}</div>
+                          <div style="font-size: 12px; color: var(--color-text-3);">ID: {{ item.id || '聚合视图' }}</div>
                         </div>
                       </div>
                       <div v-if="item.intro" style="font-size: 12px; color: var(--color-text-2); line-height: 1.5;">
                         {{ item.intro }}
                       </div>
-                      <div v-if="item.error_count > 0" style="font-size: 12px; color: var(--color-danger-6);">
-                        最近失败: {{ item.last_error || '无详情' }}
-                      </div>
-                      <div
-                        style="display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid var(--color-border); flex-wrap: wrap;">
-                        <a-button size="mini" type="text" @click.stop="editFeedById(item)">
-                          <template #icon><icon-edit /></template>
-                          编辑
-                        </a-button>
-                        <a-button size="mini" type="text" @click.stop="copyTarget(item.target)">
-                          <template #icon><icon-copy /></template>
-                          复制目标
-                        </a-button>
-                        <a-button size="mini" type="text"
-                          :status="item.status ? 'warning' : 'success'"
-                          @click.stop="toggleFeedStatus(item)">
-                          <template #icon>
-                            <icon-stop v-if="item.status === 1" />
-                            <icon-play-arrow v-else />
-                          </template>
-                          {{ item.status === 1 ? '停用' : '启用' }}
-                        </a-button>
-                        <a-button size="mini" type="text" @click.stop="triggerSyncById(item.id)">
-                          <template #icon><icon-refresh /></template>
-                          同步
-                        </a-button>
-                        <a-button size="mini" type="text" status="danger" @click.stop="deleteFeedById(item)">
-                          <template #icon><icon-delete /></template>
-                          删除
-                        </a-button>
-                      </div>
+                      <template v-if="canManageFeed(item)">
+                        <div v-if="item.error_count > 0" style="font-size: 12px; color: var(--color-danger-6);">
+                          最近失败: {{ item.last_error || '无详情' }}
+                        </div>
+                        <div
+                          style="display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid var(--color-border); flex-wrap: wrap;">
+                          <a-button size="mini" type="text" @click.stop="editFeedById(item)">
+                            <template #icon><icon-edit /></template>
+                            编辑
+                          </a-button>
+                          <a-button size="mini" type="text" @click.stop="copyTarget(item.target)">
+                            <template #icon><icon-copy /></template>
+                            复制目标
+                          </a-button>
+                          <a-button size="mini" type="text"
+                            :status="item.status ? 'warning' : 'success'"
+                            @click.stop="toggleFeedStatus(item)">
+                            <template #icon>
+                              <icon-stop v-if="item.status === 1" />
+                              <icon-play-arrow v-else />
+                            </template>
+                            {{ item.status === 1 ? '停用' : '启用' }}
+                          </a-button>
+                          <a-button size="mini" type="text" @click.stop="triggerSyncById(item.id)">
+                            <template #icon><icon-refresh /></template>
+                            同步
+                          </a-button>
+                          <a-button size="mini" type="text" status="danger" @click.stop="deleteFeedById(item)">
+                            <template #icon><icon-delete /></template>
+                            删除
+                          </a-button>
+                        </div>
+                      </template>
                     </div>
                   </template>
                 </a-popover>
@@ -114,27 +116,19 @@
 
       <!-- 右侧：笔记列表 -->
       <a-layout-content style="padding: 20px;">
-        <!-- 未选 feed：空态引导 -->
-        <div v-if="!activeFeedId" class="empty-state">
-          <a-empty description="请从左侧选择订阅，或添加新订阅">
-            <template #image>
-              <img src="/logo.svg" style="width: 80px; opacity: 0.5;" />
-            </template>
-            <a-button type="primary" @click="goAdd">
-              <template #icon><icon-plus /></template>
-              添加订阅
-            </a-button>
-          </a-empty>
-        </div>
-
-        <!-- 选中 feed：笔记列表 -->
-        <template v-else>
-          <a-page-header
-            :title="activeFeed?.name || '小红书订阅'"
-            :subtitle="activeFeed?.target || ''"
-            :show-back="false">
-            <template #extra>
-              <a-space>
+        <a-page-header
+          :title="activeFeed?.name || '全部'"
+          :subtitle="activeFeedId === '' ? '显示所有小红书订阅的笔记' : (activeFeed?.target || '')"
+          :show-back="false">
+          <template #extra>
+            <a-space>
+              <!-- 聚合视图 -->
+              <template v-if="activeFeedId === ''">
+                <a-tag color="arcoblue">聚合视图</a-tag>
+                <a-tag>共 {{ articlePagination.total }} 条</a-tag>
+              </template>
+              <!-- 单 feed 视图 -->
+              <template v-else>
                 <a-tag :color="activeFeed?.kind === 'keyword' ? 'arcoblue' : 'green'">
                   {{ activeFeed?.kind === 'keyword' ? '关键词' : '账号' }}
                 </a-tag>
@@ -162,63 +156,69 @@
                   <template #icon><icon-delete /></template>
                   删除
                 </a-button>
-              </a-space>
+              </template>
+            </a-space>
+          </template>
+        </a-page-header>
+
+        <a-card style="border: 0">
+          <a-alert v-if="activeFeed?.intro" type="info" closable>{{ activeFeed.intro }}</a-alert>
+          <a-alert v-else-if="activeFeedId === ''" type="success" closable>
+            聚合视图: 跨所有小红书订阅展示笔记, 点击左侧具体订阅可查看该订阅下的笔记并执行同步、编辑等操作
+          </a-alert>
+          <a-alert v-else closable>暂无订阅简介</a-alert>
+
+          <div class="search-bar">
+            <a-input-search class="search-input"
+              v-model="articleSearchText"
+              placeholder="搜索笔记标题或内容"
+              @search="handleArticleSearch"
+              @keyup.enter="handleArticleSearch"
+              allow-clear />
+            <a-button @click="refreshArticles" :loading="articleLoading">
+              <template #icon><icon-refresh /></template>
+              刷新
+            </a-button>
+          </div>
+
+          <a-table :columns="articleColumns" :data="articles" :loading="articleLoading"
+            :pagination="articlePagination"
+            :scroll="{ x: '100%' }"
+            @page-change="handleArticlePageChange"
+            @page-size-change="handleArticlePageSizeChange">
+            <template #title="{ record }">
+              <a :href="record.url" target="_blank" rel="noopener" class="article-link"
+                :title="record.title">
+                {{ record.title || '(无标题)' }}
+              </a>
             </template>
-          </a-page-header>
-
-          <a-card style="border: 0">
-            <a-alert v-if="activeFeed?.intro" type="info" closable>{{ activeFeed.intro }}</a-alert>
-            <a-alert v-else closable>暂无订阅简介</a-alert>
-
-            <div class="search-bar">
-              <a-input-search class="search-input"
-                v-model="articleSearchText"
-                placeholder="搜索笔记标题或内容"
-                @search="handleArticleSearch"
-                @keyup.enter="handleArticleSearch"
-                allow-clear />
-              <a-button @click="refreshArticles" :loading="articleLoading">
-                <template #icon><icon-refresh /></template>
-                刷新
-              </a-button>
-            </div>
-
-            <a-table :columns="articleColumns" :data="articles" :loading="articleLoading"
-              :pagination="articlePagination"
-              :scroll="{ x: '100%' }"
-              @page-change="handleArticlePageChange"
-              @page-size-change="handleArticlePageSizeChange">
-              <template #title="{ record }">
-                <a :href="record.url" target="_blank" rel="noopener" class="article-link"
-                  :title="record.title">
-                  {{ record.title || '(无标题)' }}
-                </a>
-              </template>
-              <template #cover="{ record }">
-                <a-image v-if="record.pic_url" :src="record.pic_url" :width="48" :height="48" fit="cover" />
-                <span v-else class="muted">—</span>
-              </template>
-              <template #author="{ record }">
-                <span>{{ record.author || '—' }}</span>
-              </template>
-              <template #metrics="{ record }">
-                <a-tooltip
-                  :content="`❤ ${record.liked_count} · 💬 ${record.comments_count} · ⭐ ${record.collected_count} · 📖 ${record.read_count} · 🔁 ${record.share_count}`">
-                  <a-space size="mini">
-                    <span>❤ {{ record.liked_count }}</span>
-                    <span>💬 {{ record.comments_count }}</span>
-                  </a-space>
-                </a-tooltip>
-              </template>
-              <template #publish_time="{ record }">
-                <span class="muted">{{ formatTimestamp(record.publish_time) }}</span>
-              </template>
-              <template #content="{ record }">
-                <div class="content-preview">{{ truncate(record.content, 80) }}</div>
-              </template>
-            </a-table>
-          </a-card>
-        </template>
+            <template #cover="{ record }">
+              <a-image v-if="record.pic_url" :src="record.pic_url" :width="48" :height="48" fit="cover" />
+              <span v-else class="muted">—</span>
+            </template>
+            <template #author="{ record }">
+              <span>{{ record.author || '—' }}</span>
+            </template>
+            <template #feed_name="{ record }">
+              <a-tag size="mini" color="gray">{{ record.feed_name || '—' }}</a-tag>
+            </template>
+            <template #metrics="{ record }">
+              <a-tooltip
+                :content="`❤ ${record.liked_count} · 💬 ${record.comments_count} · ⭐ ${record.collected_count} · 📖 ${record.read_count} · 🔁 ${record.share_count}`">
+                <a-space size="mini">
+                  <span>❤ {{ record.liked_count }}</span>
+                  <span>💬 {{ record.comments_count }}</span>
+                </a-space>
+              </a-tooltip>
+            </template>
+            <template #publish_time="{ record }">
+              <span class="muted">{{ formatTimestamp(record.publish_time) }}</span>
+            </template>
+            <template #content="{ record }">
+              <div class="content-preview">{{ truncate(record.content, 80) }}</div>
+            </template>
+          </a-table>
+        </a-card>
       </a-layout-content>
     </a-layout>
   </a-spin>
@@ -266,6 +266,7 @@ import {
   deleteXhsFeed,
   triggerXhsSync,
   listXhsFeedArticles,
+  listXhsArticles,
   type XhsFeed,
   type XhsArticle,
   type XhsKind,
@@ -283,7 +284,32 @@ const feedSearchText = ref('')
 const kindFilter = ref<XhsKind | ''>('')
 const statusFilter = ref<number | undefined>(undefined)
 const feedPagination = reactive({ current: 1, pageSize: 10, total: 0 })
+// activeFeedId === '' 表示聚合“全部」视图 (默认, 与公众号侧一致)
 const activeFeedId = ref<string>('')
+
+// 虚拟“全部」订阅项 (仅在默认筛选 + 无搜索时插入)
+const ALL_FEED_SENTINEL: XhsFeed = {
+  id: '',
+  name: '全部',
+  cover: '/static/logo.svg',
+  intro: '显示所有小红书订阅的笔记',
+  status: 1,
+  kind: 'keyword',
+  target: '',
+  max_fetch_count: 0,
+  refresh_interval_hours: 0,
+  last_publish_time: 0,
+  last_cursor: '',
+  sync_time: 0,
+  error_count: 0,
+  last_error: '',
+  last_error_at: 0,
+  created_at: '',
+  updated_at: '',
+}
+
+// 虚拟“全部」项不可编辑/同步/删除 (用于 popover 操作按钮、右侧 panel)
+const canManageFeed = (item: XhsFeed) => item.id !== ''
 
 const activeFeed = computed<XhsFeed | undefined>(() =>
   feedList.value.find((f) => f.id === activeFeedId.value),
@@ -304,7 +330,16 @@ const loadFeeds = async () => {
       page: feedPagination.current - 1,
       pageSize: feedPagination.pageSize,
     })
-    feedList.value = res.list || []
+    let list = res.list || []
+    // 仅在默认筛选 + 无搜索时插入虚拟“全部」项 (与公众号侧一致)
+    if (
+      kindFilter.value === '' &&
+      statusFilter.value === undefined &&
+      !feedSearchText.value.trim()
+    ) {
+      list = [ALL_FEED_SENTINEL, ...list]
+    }
+    feedList.value = list
     feedPagination.total = res.total || 0
   } catch (err: any) {
     Message.error(err.message || '获取订阅列表错误')
@@ -341,23 +376,40 @@ const articleLoading = ref(false)
 const articleSearchText = ref('')
 const articlePagination = reactive({ current: 1, pageSize: 20, total: 0 })
 
-const articleColumns = [
-  { title: '封面', slotName: 'cover', width: 70 },
-  { title: '标题', slotName: 'title', ellipsis: true, width: 280 },
-  { title: '作者', slotName: 'author', width: 140 },
-  { title: '互动', slotName: 'metrics', width: 160 },
-  { title: '发布时间', slotName: 'publish_time', width: 160 },
-  { title: '内容预览', slotName: 'content' },
-]
+// 表格列: 聚合视图 (activeFeedId==='') 时多一列「来源订阅」
+interface ArticleColumn {
+  title: string
+  slotName?: string
+  dataIndex?: string
+  ellipsis?: boolean
+  width?: number
+}
+const articleColumns = computed<ArticleColumn[]>(() => {
+  const cols: ArticleColumn[] = [
+    { title: '封面', slotName: 'cover', width: 70 },
+    { title: '标题', slotName: 'title', ellipsis: true, width: 280 },
+    { title: '作者', slotName: 'author', width: 140 },
+    { title: '互动', slotName: 'metrics', width: 160 },
+    { title: '发布时间', slotName: 'publish_time', width: 160 },
+  ]
+  if (activeFeedId.value === '') {
+    cols.push({ title: '来源订阅', dataIndex: 'feed_name', slotName: 'feed_name', width: 160 })
+  }
+  cols.push({ title: '内容预览', slotName: 'content' })
+  return cols
+})
 
 const loadArticles = async () => {
-  if (!activeFeedId.value) return
   articleLoading.value = true
   try {
-    const res = await listXhsFeedArticles(activeFeedId.value, {
+    const req = {
       page: articlePagination.current - 1,
       pageSize: articlePagination.pageSize,
-    })
+    }
+    // 聚合视图 (activeFeedId==='') 走专用接口
+    const res = activeFeedId.value === ''
+      ? await listXhsArticles(req)
+      : await listXhsFeedArticles(activeFeedId.value, req)
     let list = res.list || []
     const kw = articleSearchText.value.trim().toLowerCase()
     if (kw) {
@@ -560,12 +612,13 @@ watch(
 
 onMounted(async () => {
   await loadFeeds()
-  // 如果 URL 带 feed_id，等列表加载完成后尝试选中
+  // 如果 URL 带 feed_id, 等列表加载完成后尝试选中
   const q = route.query.feed_id
   if (q && typeof q === 'string' && feedList.value.some((f) => f.id === q)) {
     activeFeedId.value = q
-    await loadArticles()
   }
+  // 默认 activeFeedId='' (聚合视图), 总是加载笔记列表
+  await loadArticles()
 })
 </script>
 
@@ -608,14 +661,6 @@ onMounted(async () => {
 .search-input {
   flex: 1;
   min-width: 200px;
-}
-
-.empty-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 400px;
 }
 
 .article-link {

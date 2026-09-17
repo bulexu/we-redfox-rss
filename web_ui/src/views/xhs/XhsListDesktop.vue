@@ -187,8 +187,8 @@
             @page-change="handleArticlePageChange"
             @page-size-change="handleArticlePageSizeChange">
             <template #title="{ record }">
-              <a :href="record.url" target="_blank" rel="noopener" class="article-link"
-                :title="record.title">
+              <a class="article-link" :title="record.title" style="cursor: pointer;"
+                @click="viewArticle(record)">
                 {{ record.title || '(无标题)' }}
               </a>
             </template>
@@ -383,6 +383,12 @@ interface ArticleColumn {
   dataIndex?: string
   ellipsis?: boolean
   width?: number
+}
+// 参考 wechat/ArticleListDesktop.viewArticle: 跳转站内模板页 (/views/article/{id})，
+// 不再直接打开小红书外链。模板页已支持 XHS 互动指标 + 订阅源信息卡 (article_detail.html)。
+const viewArticle = (record: any) => {
+  if (!record?.id) return
+  window.open(`/views/article/${record.id}`, '_blank', 'noopener,noreferrer')
 }
 const articleColumns = computed<ArticleColumn[]>(() => {
   const cols: ArticleColumn[] = [

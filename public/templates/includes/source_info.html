@@ -1,9 +1,10 @@
-{# 通用订阅源信息块 (公众号 / 小红书 共用)。
-   上下文:
-     - article.cover / article.name / article.intro / article.feed_id   必填
-     - link: 是否把名字渲染成链接 (默认 False, 详情页传 True)
-     - platform_label: "公众号" / "小红书", 用于 title 提示
-#}
+<!--
+  通用订阅源信息块 (公众号 / 小红书 共用)。
+  上下文:
+    - article.cover / article.name / article.intro / article.feed_id   必填
+    - link: 是否把名字渲染成链接 (默认 False, 详情页传 True)
+    - platform_label: "公众号" / "小红书", 用于 title 提示
+-->
 <div class="source-info">
     <div class="source-info-cover">
         {% if article.cover %}

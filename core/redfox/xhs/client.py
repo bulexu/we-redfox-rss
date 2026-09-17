@@ -104,12 +104,13 @@ class XhsClient(RedfoxClient):
                 offset=page * page_size,
                 sort_type=sort_type,
             )
-            notes = data.get("notes") or []
+            # redfox 优质库返回 ``list`` 字段 (SDK 已解包 data,  老版本曾用 ``notes``)
+            notes = data.get("list") or data.get("notes") or []
             if not notes:
                 return
             yield from notes
             has_more = data.get("hasMore")
-            if has_more is False:
+            if has_more is False or has_more == 0:
                 return
 
     def search_users(
@@ -185,12 +186,13 @@ class XhsClient(RedfoxClient):
                 offset=page * page_size,
                 sort_type=sort_type,
             )
-            notes = data.get("notes") or []
+            # redfox 优质库返回 ``list`` 字段 (SDK 已解包 data,  老版本曾用 ``notes``)
+            notes = data.get("list") or data.get("notes") or []
             if not notes:
                 return
             yield from notes
             has_more = data.get("hasMore")
-            if has_more is False:
+            if has_more is False or has_more == 0:
                 return
 
 

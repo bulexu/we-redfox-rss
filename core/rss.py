@@ -98,7 +98,7 @@ class RSS:
         return text
        
     def generate_rss(self,rss_list: dict, title: str = "Mp-We-Rss", 
-                    link: str = "https://github.com/rachelos/we-mp-rss",
+                    link: str = "https://github.com/bulexu/we-redfox-rss",
                     description: str = "RSS频道", language: str = "zh-CN",image_url:str=""):
         from core.config import cfg
         full_context=bool(cfg.get("rss.full_context",False))
@@ -161,7 +161,7 @@ class RSS:
         return tree_str
      
     def generate_atom(self,rss_list: dict, title: str = "Mp-We-Rss", 
-                    link: str = "https://github.com/rachelos/we-mp-rss",
+                    link: str = "https://github.com/bulexu/we-redfox-rss",
                     description: str = "RSS频道", language: str = "zh-CN",image_url:str="") -> str:
         """生成Atom格式的RSS内容
         
@@ -245,7 +245,7 @@ class RSS:
             return "text"
         return "html"
     def generate_json(self, rss_list: dict,title: str = "Mp-We-Rss", 
-                    link: str = "https://github.com/rachelos/we-mp-rss",
+                    link: str = "https://github.com/bulexu/we-redfox-rss",
                     description: str = "RSS频道", language: str = "zh-CN",image_url:str="") -> str:
         """获取JSON格式的RSS内容
         
@@ -286,7 +286,7 @@ class RSS:
         except FileNotFoundError:
             return None     
     def generate(self,rss_list: dict,ext=str, title: str = "Mp-We-Rss", 
-                    link: str = "https://github.com/rachelos/we-mp-rss",
+                    link: str = "https://github.com/bulexu/we-redfox-rss",
                     description: str = "RSS频道", language: str = "zh-CN",image_url:str="",template:str=None) -> str:
         """根据扩展名获取对应格式的RSS内容
         
@@ -313,7 +313,7 @@ class RSS:
             return self.generate_by_template(rss_list,template, title=title, link=link, description=description,language=language,image_url=image_url)
         else:
             raise ValueError(f"Unsupported extension: {ext}")
-    def generate_by_template(self,rss_list: dict, template: str, title: str = "Mp-We-Rss",link: str = "https://github.com/rachelos/we-mp-rss",description: str = "RSS频道",language: str = "zh-CN",image_url:str=""):
+    def generate_by_template(self,rss_list: dict, template: str, title: str = "Mp-We-Rss",link: str = "https://github.com/bulexu/we-redfox-rss",description: str = "RSS频道",language: str = "zh-CN",image_url:str=""):
             from core.lax import TemplateParser
             template = TemplateParser(template)
             return template.render({"articles": rss_list, "title": title,"link":link,"description":description,"language":language,"image_url":image_url})

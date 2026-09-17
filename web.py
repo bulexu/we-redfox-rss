@@ -108,7 +108,7 @@ async def add_custom_header(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Version"] = VERSION
     response.headers["X-Powered-By"] = "Rachel"
-    response.headers["GITHUB"] = "https://github.com/rachelos/we-mp-rss"
+    response.headers["GITHUB"] = "https://github.com/bulexu/we-redfox-rss"
     response.headers["Server"] = cfg.get("app_name", "WeRSS")
     return response
 # 创建API路由分组

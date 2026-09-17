@@ -10,6 +10,7 @@ from .home import router as home_router
 from .articles import router as articles_router
 from .tags import router as tags_router
 from .mps import router as mps_router
+from .xhs import router as xhs_router
 from .article_detail import router as article_detail_router
 
 # 注册子路由
@@ -18,3 +19,4 @@ router.include_router(articles_router)
 router.include_router(article_detail_router)
 router.include_router(tags_router)
 router.include_router(mps_router)
+router.include_router(xhs_router)

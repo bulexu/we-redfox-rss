@@ -196,7 +196,7 @@ async def tag_detail_view(
                     "cover": Web.get_image_url(feed.cover) if feed else "",
                     "url": article.url,
                     "publish_time": datetime.fromtimestamp(article.publish_time).strftime('%Y-%m-%d %H:%M') if article.publish_time else "",
-                    "name": feed.name if feed else "未知公众号",
+                    "name": feed.name if feed else "未知订阅",
                     "feed_id": article.feed_id
                 }
                 articles.append(article_data)

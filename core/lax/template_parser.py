@@ -865,6 +865,37 @@ class TemplateParser:
         expr_lower = expr.lower()
         return not any(keyword in expr_lower for keyword in forbidden)
 
+    def _wrap_dict_attrs(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Wrap dict values so eval can access nested fields via dotted syntax.
+
+        A bare ``dict`` only supports ``['key']`` indexing, but templates usually
+        reference context values with dotted attribute syntax (``user.name``).
+        This helper recursively wraps nested dicts in a ``SimpleNamespace``-like
+        object so ``eval`` expressions such as ``a.b == 'x'`` resolve correctly.
+        """
+        class _AttrDict:
+            def __init__(self, data):
+                for k, v in data.items():
+                    if isinstance(v, dict):
+                        setattr(self, k, _AttrDict(v))
+                    elif isinstance(v, list):
+                        setattr(self, k, [_AttrDict(i) if isinstance(i, dict) else i for i in v])
+                    else:
+                        setattr(self, k, v)
+
+            def __getitem__(self, key):
+                return getattr(self, key)
+
+        wrapped = {}
+        for k, v in context.items():
+            if isinstance(v, dict):
+                wrapped[k] = _AttrDict(v)
+            elif isinstance(v, list):
+                wrapped[k] = [_AttrDict(i) if isinstance(i, dict) else i for i in v]
+            else:
+                wrapped[k] = v
+        return wrapped
+
     def _evaluate_condition(self, condition: str, context: Dict[str, Any]) -> tuple:
         """
         Evaluate a condition expression or code block in the given context.
@@ -937,6 +968,14 @@ class TemplateParser:
             
             # Handle nested attribute access (e.g. user.is_admin)
             if '.' in condition:
+                # If the condition contains a comparison operator, fall through to
+                # the generic eval branch so expressions like
+                # `current_filters.sort == 'publish_time'` work.
+                if any(op in condition for op in ('==', '!=', '<=', '>=', '<', '>')):
+                    # Wrap dict values so eval can use dotted attribute access.
+                    eval_locals = self._wrap_dict_attrs(local_vars)
+                    result = bool(eval(condition, eval_globals, eval_locals))
+                    return result, local_vars
                 parts = condition.split('.')
                 current = local_vars.get(parts[0], {})
                 for part in parts[1:]:

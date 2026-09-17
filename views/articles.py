@@ -114,7 +114,7 @@ async def articles_view(
                 "url": article.url,
                 "publish_time": datetime.fromtimestamp(article.publish_time).strftime('%Y-%m-%d %H:%M') if article.publish_time else "",
                 "created_at": article.created_at.strftime('%Y-%m-%d %H:%M') if article.created_at else "",
-                "name": feed.name if feed else "未知公众号",
+                "name": feed.name if feed else "未知订阅",
                 "feed_id": article.feed_id,
                 "cover": Web.get_image_url(feed.cover) if feed else "",
                 "is_read": bool(article.is_read),

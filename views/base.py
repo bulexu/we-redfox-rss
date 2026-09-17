@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, Depends, Query, HTTPException
 from core.lax.template_parser import TemplateParser
 from fastapi.responses import HTMLResponse
 from core.db import DB
-from core.models.feed import Feed
+from core.models.feed import Feed, PLATFORM_MP, PLATFORM_XHS, infer_platform_from_id
 from core.models.article import Article
 from driver.wxarticle import Web
 from datetime import datetime
@@ -12,19 +12,28 @@ import json
 #获取公众号视图数据
 def get_mps_view(
     page: int ,
-    limit: int 
-): 
+    limit: int
+):
     session = DB.get_session()
     data={}
     try:
+        # 仅显示公众号订阅源，剔除小红书等其他平台
+        mp_filter = (Feed.platform == PLATFORM_MP) | Feed.platform.is_(None)
         # 查询标签总数
-        total = session.query(Feed).filter(Feed.status == 1).count()
-        
+        total = session.query(Feed).filter(Feed.status == 1, mp_filter).count()
+
         # 计算偏移量
         offset = (page - 1) * limit
 
         # 查询公众号列表
-        feeds = session.query(Feed).filter(Feed.status == 1).order_by(Feed.created_at.desc()).offset(offset).limit(limit).all()
+        feeds = (
+            session.query(Feed)
+            .filter(Feed.status == 1, mp_filter)
+            .order_by(Feed.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
         
         # 处理公众号数据
         feed_list = []

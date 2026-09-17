@@ -3,7 +3,7 @@
 <!-- 文章头部信息 -->
 <div class="article-header">
     <h1 style="margin-bottom: 1rem;font-weight: bold;font-size: 1.2rem;">{{article.title}}</h1>
-    
+
     <div class="article-meta">
         <div>
             <span style="margin-right: 1rem;">🕐 发布时间: {{article.publish_time}}</span>
@@ -17,9 +17,18 @@
         </div>
     </div>
 
-  
-   
-    
+    {% if article.platform_kind == 'xhs' %}
+    {# 小红书专属互动指标 #}
+    <div class="article-meta" style="border-top: none; padding-top: 0; margin-top: 0.5rem;">
+        <div>
+            <span style="margin-right: 1rem;">❤ {{article.liked_count or 0}} 点赞</span>
+            <span style="margin-right: 1rem;">💬 {{article.comments_count or 0}} 评论</span>
+            <span style="margin-right: 1rem;">⭐ {{article.collected_count or 0}} 收藏</span>
+            <span>📖 {{article.read_count or 0}} 阅读</span>
+        </div>
+    </div>
+    {% endif %}
+
     {% if article.description %}
     <div style="background: #f8f9fa;margin-top: 1rem; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
         <strong>摘要：</strong> {{article.description}}
@@ -31,24 +40,12 @@
         <img src="{{article.pic_url}}" alt="{{article.title}}" style="aspect-ratio:16/9; width: 90%;object-fit: cover;object-position: center;  border-radius: 8px;"/>
     </div>
     {% endif %}
-    
-  
-    <!-- 公众号信息 -->
-    <div class="mp-info">
-        <div style="width: 48px; height: 48px; background: #e9ecef; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
-                <img src="{{article.cover or '/static/logo.svg'}}" alt="{{article.title}}" width="50px"/>
-        </div>
-        <div style="flex: 1;">
-            <div style="font-weight: 500; font-size: 1.1rem;">
-                  <a href="/views/articles?mp_id={{article.feed_id}}" target="_blank"  style="font-size: 0.9rem;">{{article.name}}</a>
-            </div>
 
-            {% if article.intro %}
-            <div class="text-muted" style="font-size: 0.9rem;">{{article.intro}}</div>
-            {% endif %}
-        </div>
 
-    </div>
+    <!-- 订阅源信息 (公众号 / 小红书 共用) -->
+    {% with link=True, platform_label=article.platform_label %}
+    {% include "includes/source_info.html" with context %}
+    {% endwith %}
 </div>
 
 <!-- 文章内容 -->

@@ -1,0 +1,25 @@
+{# 通用订阅源信息块 (公众号 / 小红书 共用)。
+   上下文:
+     - article.cover / article.name / article.intro / article.feed_id   必填
+     - link: 是否把名字渲染成链接 (默认 False, 详情页传 True)
+     - platform_label: "公众号" / "小红书", 用于 title 提示
+#}
+<div class="source-info">
+    <div class="source-info-cover">
+        {% if article.cover %}
+        <img src="{{article.cover}}" alt="{{article.name or ''}}" onerror="this.src='/static/logo.svg'" loading="lazy"/>
+        {% endif %}
+    </div>
+    <div class="source-info-body">
+        <div class="source-info-name">
+            {% if link and article.feed_id %}
+            <a href="/views/articles?mp_id={{article.feed_id}}" title="查看 {{platform_label or '订阅源'}} 全部内容">{{article.name}}</a>
+            {% else %}
+            {{article.name or ''}}
+            {% endif %}
+        </div>
+        {% if article.intro %}
+        <div class="text-muted source-info-intro">{{article.intro}}</div>
+        {% endif %}
+    </div>
+</div>

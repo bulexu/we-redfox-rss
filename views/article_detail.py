@@ -16,6 +16,11 @@ from views.config import base
 from driver.wxarticle import Web
 from core.cache import cache_view, clear_cache_pattern, data_cache
 from sqlalchemy.orm import defer
+from core.models.feed import (
+    PLATFORM_MP,
+    PLATFORM_XHS,
+    infer_platform_from_id,
+)
 # 创建路由器
 router = APIRouter(tags=["文章详情"])
 @router.get("/print/{article_id}", response_class=HTMLResponse, summary="文章打印页")
@@ -95,6 +100,15 @@ async def article_detail_view(
         raw_content = article.content
         processed_content = process_content_images(raw_content)
         
+        # 平台识别:  优先用 feed.platform 字段,  NULL 时按 id 前缀兜底 (老数据兼容)
+        platform = (getattr(feed, "platform", None) if feed else None) or infer_platform_from_id(article.feed_id)
+        if platform == PLATFORM_XHS:
+            platform_label = "小红书"
+        elif platform == PLATFORM_MP:
+            platform_label = "公众号"
+        else:
+            platform_label = "订阅源"
+
         article_data = {
             "id": article.id,
             "title": article.title,
@@ -104,16 +118,25 @@ async def article_detail_view(
             "publish_time": datetime.fromtimestamp(article.publish_time).strftime('%Y-%m-%d %H:%M') if article.publish_time else "",
             "created_at": article.created_at.strftime('%Y-%m-%d %H:%M') if article.created_at else "",
             "content": processed_content,
-            "name": feed.name if feed else "未知公众号",
+            "name": feed.name if feed else "未知订阅",
             "feed_id": article.feed_id,
-            "cover": feed.cover if feed else "/static/logo.png",
+            "cover": feed.cover if feed else "/static/logo.svg",
             "intro": feed.intro if feed else "",
+            # 平台感知字段 (公众号 / 小红书 共用模板)
+            "platform": platform,
+            "platform_kind": platform,
+            "platform_label": platform_label,
+            # 小红书专属互动指标 (公众号侧为 0, 模板里已用 platform_kind gate)
+            "liked_count": int(getattr(article, "liked_count", 0) or 0),
+            "comments_count": int(getattr(article, "comments_count", 0) or 0),
+            "collected_count": int(getattr(article, "collected_count", 0) or 0),
+            "read_count": int(getattr(article, "read_count", 0) or 0),
         }
         
         # 构建面包屑
         breadcrumb = [
             {"name": feed.name, "url": f"/views/articles?mp_id={article_data['feed_id']}"},
-            {"name": article_data["title"][:50] + "..." if len(article_data["title"]) > 50 else article_data["title"], "url": None}
+            {"name": f"[{platform_label}] {article_data['title'][:50]}" + ("..." if len(article_data["title"]) > 50 else ""), "url": None}
         ]
         
         # 读取模板文件

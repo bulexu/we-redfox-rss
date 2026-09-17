@@ -225,33 +225,65 @@ class TemplateParser:
                         i += 1
                         continue
                     
-                    # Find else if exists
-                    else_idx = -1
-                    for j in range(i+1, endif_idx):
+                    # Walk through branches: collect {% elif %} / {% else %} positions so we
+                    # can pick the first branch whose condition evaluates true.
+                    # We track nesting depth so that {% elif %}/{% else %} inside a
+                    # nested {% if %} ... {% endif %} are NOT treated as boundary
+                    # markers for this branch list.
+                    # branches[k] = (idx, cond_str_or_None) where idx is the position
+                    # of the {% elif %} / {% else %} block in self.compiled.
+                    branches = []
+                    depth = 0
+                    j = i + 1
+                    while j < endif_idx:
                         part = self.compiled[j]
-                        if isinstance(part, str) and part.strip() in ('{% else %}', 'else'):
-                            else_idx = j
+                        if isinstance(part, str):
+                            stripped = part.strip()
+                            if depth == 0:
+                                if stripped.startswith('{% elif ') and stripped.endswith('%}'):
+                                    branches.append((j, stripped[2:-2].strip()))
+                                    j += 1
+                                    continue
+                                if stripped in ('{% else %}', 'else'):
+                                    branches.append((j, None))
+                                    j += 1
+                                    continue
+                            if stripped.startswith('{% if ') or stripped == '{% if %}':
+                                depth += 1
+                            elif stripped in ('{% endif %}', 'endif'):
+                                depth -= 1
+                        j += 1
+
+                    # Build a sequence of (start_idx, cond_or_None) covering every
+                    # branch. The initial if is branch 0; subsequent elif/else follow.
+                    all_branches = [(i, block)] + branches
+
+                    selected_idx = -1
+                    for k, (start, cond_str) in enumerate(all_branches):
+                        if cond_str is None:
+                            # {% else %} — falls through only if no prior branch matched.
+                            if selected_idx < 0:
+                                selected_idx = k
                             break
-                    
-                    # Process the appropriate block
-                    if result:
-                        # Process if block (from current position to else or endif)
-                        end_idx = else_idx if else_idx != -1 else endif_idx
-                        if_content = self.compiled[i+1:end_idx]
-                        
+                        # cond_str is "if x == 1" or "elif x == 2".
+                        cond_body = cond_str[3:].strip() if cond_str.startswith('if ') else cond_str[len('elif '):].strip()
+                        cond_result, _ = self._evaluate_condition(cond_body, context)
+                        if cond_result:
+                            selected_idx = k
+                            break
+
+                    if selected_idx >= 0:
+                        selected_start = all_branches[selected_idx][0] + 1
+                        if selected_idx + 1 < len(all_branches):
+                            selected_end = all_branches[selected_idx + 1][0]
+                        else:
+                            selected_end = endif_idx
+                        if_content = self.compiled[selected_start:selected_end]
                         if_parser = TemplateParser('')
                         if_parser.compiled = if_content
                         rendered = if_parser.render(context)
                         output.append(rendered)
-                    elif else_idx != -1:
-                        # Process else block
-                        else_content = self.compiled[else_idx+1:endif_idx]
-                        
-                        else_parser = TemplateParser('')
-                        else_parser.compiled = else_content
-                        rendered = else_parser.render(context)
-                        output.append(rendered)
-                    
+
                     # Skip to after endif
                     i = endif_idx + 1
                     continue

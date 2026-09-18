@@ -3,14 +3,16 @@ from sqlalchemy import BigInteger
 
 from  .base import Base,Column,String,Integer,DateTime,Text,DATA_STATUS
 class ArticleBase(Base):
-    """文章基础模型（公众号 + 小红书共用）"""
+    """内容基础模型（公众号 + 小红书 + 抖音共用）"""
     from_attributes = True
     __tablename__ = 'articles'
     # 文章基础属性
     id = Column(String(255), primary_key=True)  # 文章全局唯一ID（公众号: App Message ID / 小红书: workId）
     feed_id = Column(String(255), index=True)  # 订阅源ID（公众号: MP_WXS_xxx / 小红书: XHS_KW_xxx, XHS_U_xxx）
     title = Column(String(1000))  # 文章标题
-    pic_url = Column(String(500))  # 封面图片URL地址（小红书: coverUrl）
+    # Instagram CDN 的带签名图片 URL 经常超过 500 字符，必须完整保存，
+    # 否则截掉末尾的签名参数后图片会全部失效。
+    pic_url = Column(Text)  # 封面图片URL地址（小红书: coverUrl）
     url=Column(String(500))  # 文章的永久链接（URL），用户点击阅读的地址（小红书: workUrl）
     description=Column(Text)  # 文章摘要（对应 digest / 小红书 RSS 摘要）
     extinfo = Column(Text)  # 扩展信息

@@ -89,7 +89,12 @@ class Db:
             def receive_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
                 print_info(f"[SQL] {statement}")
                 if parameters:
-                    print_info(f"[参数] {parameters}")
+                    try:
+                        print_info(f"[参数] {parameters}")
+                    except UnicodeEncodeError:
+                        # Windows 的 GBK 控制台无法直接输出部分 Emoji（抖音
+                        # 文案中很常见）。日志编码失败不应中断数据库写入。
+                        print_info(f"[参数] {ascii(parameters)}")
             
             # 为 SQLite 设置 text_factory 处理无效 UTF-8 字符
             if con_str.startswith('sqlite:///'):
@@ -100,6 +105,8 @@ class Db:
             
             self.session_factory=self.get_session_factory()
             self.ensure_article_columns()
+            self.ensure_message_task_columns()
+            self.ensure_lark_bitable_columns()
         except Exception as e:
             print(f"Error creating database connection: {e}")
             raise
@@ -128,6 +135,50 @@ class Db:
             print_info(f"[{self.tag}] 文章表结构已自动更新: {', '.join(alter_statements)}")
         except Exception as e:
             print_warning(f"[{self.tag}] 检查/更新 articles 表结构失败: {e}")
+
+    def ensure_message_task_columns(self):
+        """为旧数据库补齐消息任务的多平台抓取范围字段。"""
+        try:
+            inspector = inspect(self.engine)
+            if "message_tasks" not in inspector.get_table_names(): # type: ignore
+                return
+            columns = {column["name"] for column in inspector.get_columns("message_tasks")} # type: ignore
+            alter_statements = []
+            if "scope_type" not in columns:
+                alter_statements.append(
+                    "ALTER TABLE message_tasks ADD COLUMN scope_type VARCHAR(20) NOT NULL DEFAULT 'legacy'"
+                )
+            if "target_platforms" not in columns:
+                alter_statements.append(
+                    "ALTER TABLE message_tasks ADD COLUMN target_platforms TEXT NOT NULL DEFAULT '[]'"
+                )
+            if not alter_statements:
+                return
+            with self.engine.begin() as conn: # type: ignore
+                for stmt in alter_statements:
+                    conn.execute(text(stmt))
+            print_info(f"[{self.tag}] 消息任务表结构已自动更新: {', '.join(alter_statements)}")
+        except Exception as e:
+            print_warning(f"[{self.tag}] 检查/更新 message_tasks 表结构失败: {e}")
+
+    def ensure_lark_bitable_columns(self):
+        """为旧数据库补齐飞书多维表的独立自动写入间隔。"""
+        try:
+            inspector = inspect(self.engine)
+            if "lark_bitables" not in inspector.get_table_names(): # type: ignore
+                return
+            columns = {column["name"] for column in inspector.get_columns("lark_bitables")} # type: ignore
+            if "push_interval_hours" in columns:
+                return
+            stmt = (
+                "ALTER TABLE lark_bitables ADD COLUMN "
+                "push_interval_hours INTEGER NOT NULL DEFAULT 6"
+            )
+            with self.engine.begin() as conn: # type: ignore
+                conn.execute(text(stmt))
+            print_info(f"[{self.tag}] 飞书多维表结构已自动更新: {stmt}")
+        except Exception as e:
+            print_warning(f"[{self.tag}] 检查/更新 lark_bitables 表结构失败: {e}")
     def create_tables(self):
         """Create all tables defined in models"""
         from core.models.base import Base as B # 导入所有模型

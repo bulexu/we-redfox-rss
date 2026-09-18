@@ -114,13 +114,13 @@ async def test_message_task(
         if not message_task:
             raise HTTPException(status_code=404, detail="Message task not found")
         
-        # 获取第一个订阅号进行测试
-        from jobs.mps import get_feeds
-        import json
-        feeds = get_feeds(message_task)
+        # 获取任务范围内的第一个订阅进行测试（支持全部/多平台/自定义）。
+        from jobs.mps import resolve_task_feeds
+        grouped = resolve_task_feeds(message_task)
+        feeds = [feed for platform_feeds in grouped.values() for feed in platform_feeds]
         
         if not feeds or len(feeds) == 0:
-            return error_response(code=400, message="没有可用的订阅号进行测试")
+            return error_response(code=400, message="任务范围内没有可用的启用订阅")
         
         feed = feeds[0]  # 使用第一个订阅号进行测试
         
@@ -186,7 +186,7 @@ async def run_message_task(
         500: 数据库查询异常
     """
     try:
-        from jobs.mps import run
+        from jobs.mps import resolve_task_feeds, run
         mps={
             "count":0,
             "list":[]
@@ -196,11 +196,14 @@ async def run_message_task(
         if not tasks:
             raise HTTPException(status_code=404, detail="Message task not found or has been deactivated")
         else:
-            import json
             for task in tasks:
                 try:
-                    # 改名自 mps_id: ORM 列名是 target_feed_ids
-                    ids=json.loads(task.target_feed_ids)
+                    grouped = resolve_task_feeds(task)
+                    ids = [
+                        feed.id
+                        for platform_feeds in grouped.values()
+                        for feed in platform_feeds
+                    ]
                     count+=len(ids)
                     mps['count']=count
                     mps['list'].append(ids)
@@ -223,6 +226,10 @@ class MessageTaskCreate(BaseModel):
     # 改名自 mps_id: 模型列 target_feed_ids 现在跨平台 (公众号 + 小红书),
     # 用 target_feed_ids 直接对应数据库列, 避免再走 Pydantic→ORM 字段映射。
     target_feed_ids: str=""
+    # Optional 使旧客户端更新任务时不会把历史范围意外覆盖成“全部”。
+    # 创建时由接口补默认值 all / []。
+    scope_type: Optional[str] = None
+    target_platforms: Optional[str] = None
     name: str=""
     message_type: int=0
     cron_exp:str=""
@@ -256,6 +263,8 @@ async def create_message_task(
             web_hook_url=task_data.web_hook_url,
             cron_exp=task_data.cron_exp,
             target_feed_ids=task_data.target_feed_ids,
+            scope_type=task_data.scope_type or "all",
+            target_platforms=task_data.target_platforms or "[]",
             message_type=task_data.message_type,
             name=task_data.name,
             status=task_data.status if task_data.status is not None else 0,
@@ -304,6 +313,10 @@ async def update_message_task(
             db_task.web_hook_url = task_data.web_hook_url
         if task_data.target_feed_ids is not None:
             db_task.target_feed_ids = task_data.target_feed_ids
+        if task_data.scope_type is not None:
+            db_task.scope_type = task_data.scope_type
+        if task_data.target_platforms is not None:
+            db_task.target_platforms = task_data.target_platforms
         if task_data.status is not None:
             db_task.status = task_data.status
         if task_data.cron_exp is not None:

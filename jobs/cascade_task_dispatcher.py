@@ -351,13 +351,13 @@ class CascadeTaskDispatcher:
         # 获取任务关联的公众号
         session = DB.get_session()
         try:
-            mps_list = json.loads(task.target_feed_ids) if task.target_feed_ids else []
-            feed_ids = [mp["id"] for mp in mps_list]
-
-            feeds = session.query(Feed).filter(Feed.id.in_(feed_ids)).all()
+            # 与本机统一调度使用同一套范围解析，支持全部/按平台/自定义。
+            from jobs.mps import resolve_task_feeds
+            grouped = resolve_task_feeds(task)
+            feeds = [feed for platform_feeds in grouped.values() for feed in platform_feeds]
 
             if not feeds:
-                print_warning(f"任务 {task.name} 没有关联公众号")
+                print_warning(f"任务 {task.name} 的抓取范围内没有启用订阅")
                 return False
 
             print_info(f"任务 {task.name} 包含 {len(feeds)} 个公众号")

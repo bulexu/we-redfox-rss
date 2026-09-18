@@ -1,7 +1,7 @@
 """飞书多维表推送 worker。
 
 入口点:
-  * ``lark_maybe_push(article_id)`` — 提交异步任务到模块级 ``ThreadPoolExecutor``,
+  * ``lark_maybe_push(article_id, bitable_id=None)`` — 提交异步任务到模块级 ``ThreadPoolExecutor``,
     立刻返回,  不阻塞调用方 (cron 周期任务 / 手动 ``POST /lark/bitables/{id}/push``
     接口都调这个)。
 
@@ -133,10 +133,11 @@ def _build_fields_for_article(
 
 # ---------- 主入口 ----------
 
-def lark_maybe_push(article_id: str) -> None:
+def lark_maybe_push(article_id: str, bitable_id: str | None = None) -> None:
     """回调入口: 把 article 异步推到所有关联 Bitables。
 
-    调用方只负责传 article_id 进来,  不要传 session 或 ORM 对象
+    ``bitable_id`` 为空时推到所有关联表；传值时只推到指定表。
+    调用方不要传 session 或 ORM 对象
     (worker 自己开新 session, 避免调用方 session 已关闭问题)。
 
     多次调用同一 article_id 安全:  worker 内部按 ``last_pushed_at`` 水印
@@ -147,13 +148,31 @@ def lark_maybe_push(article_id: str) -> None:
     if not article_id:
         return
     try:
-        _get_executor().submit(_push_article_job, str(article_id))
+        _get_executor().submit(_push_article_job, str(article_id), bitable_id)
     except RuntimeError:
         # 进程关闭时 executor 已 shutdown, 静默忽略
         pass
 
 
-def _push_article_job(article_id: str) -> None:
+def lark_push_bitable_batch(article_ids: list[str], bitable_id: str) -> None:
+    """把一批文章按给定顺序串行推到同一张表，避免水印并发越级。"""
+    if not cfg.get("lark.enabled", False) or not bitable_id:
+        return
+    cleaned = [str(article_id) for article_id in article_ids if article_id]
+    if not cleaned:
+        return
+    try:
+        _get_executor().submit(_push_bitable_batch_job, cleaned, str(bitable_id))
+    except RuntimeError:
+        pass
+
+
+def _push_bitable_batch_job(article_ids: list[str], bitable_id: str) -> None:
+    for article_id in article_ids:
+        _push_article_job(article_id, bitable_id)
+
+
+def _push_article_job(article_id: str, bitable_id: str | None = None) -> None:
     """worker 线程执行的实际推送逻辑。"""
     print_info(f"[lark] worker start article_id={article_id}")
     session = DB.get_session()
@@ -183,11 +202,12 @@ def _push_article_job(article_id: str) -> None:
             return
 
         # 一次性查全部 enabled Bitables, 在 Python 里按 feed_ids 过滤
-        bitables = (
-            session.query(LarkBitable)
-            .filter(LarkBitable.enabled == True)  # noqa: E712
-            .all()
+        bitable_query = session.query(LarkBitable).filter(
+            LarkBitable.enabled == True  # noqa: E712
         )
+        if bitable_id:
+            bitable_query = bitable_query.filter(LarkBitable.id == bitable_id)
+        bitables = bitable_query.all()
         matched = [b for b in bitables if feed_id in b.get_feed_ids()]
         if not matched:
             print_info(

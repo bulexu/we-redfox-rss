@@ -5,7 +5,7 @@
  * 与旧组件 API 完全兼容 (v-model 双向绑定的元素类型是 ``FeedItem``,
  * 对外暴露 ``parseSelected``), 但内部:
  *   * 调 ``/feeds`` (新增, 跨平台), 不再调 ``/mps``
- *   * 顶部有平台 tabs: 全部 / 公众号 / 小红书
+ *   * 顶部有平台 tabs: 全部 / 公众号 / 小红书 / 抖音 / B站 / X / TikTok / YouTube / Instagram
  *   * 每个选项带 platform 徽标 + 可选的 target 提示
  *
  * 调用方升级: ``import FeedMultiSelect from '@/components/FeedMultiSelect.vue'``,
@@ -25,7 +25,7 @@ export interface FeedItem {
   mp_cover?: string
   avatar?: string
   // 跨平台字段
-  platform?: 'mp' | 'xhs' | 'unknown'
+  platform?: 'mp' | 'xhs' | 'dy' | 'bili' | 'x' | 'tiktok' | 'youtube' | 'instagram' | 'unknown'
   target?: string
 }
 
@@ -38,7 +38,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
-type Platform = 'all' | 'mp' | 'xhs'
+type Platform = 'all' | 'mp' | 'xhs' | 'dy' | 'bili' | 'x' | 'tiktok' | 'youtube' | 'instagram'
 
 const searchKeyword = ref('')
 const loading = ref(false)
@@ -56,6 +56,12 @@ const platformTabs: { label: string; value: Platform }[] = [
   { label: '全部', value: 'all' },
   { label: '公众号', value: 'mp' },
   { label: '小红书', value: 'xhs' },
+  { label: '抖音', value: 'dy' },
+  { label: 'B站', value: 'bili' },
+  { label: 'X', value: 'x' },
+  { label: 'TikTok', value: 'tiktok' },
+  { label: 'YouTube', value: 'youtube' },
+  { label: 'Instagram', value: 'instagram' },
 ]
 
 const filteredFeeds = computed(() => {
@@ -132,7 +138,7 @@ const handleSearch = () => {
 
 const onPlatformChange = (val: Platform | string | number | undefined) => {
   // arco a-tabs change 事件 value 类型为 string | number | undefined
-  if (val === 'mp' || val === 'xhs' || val === 'all') {
+  if (val === 'mp' || val === 'xhs' || val === 'dy' || val === 'bili' || val === 'all') {
     currentPlatform.value = val
     fetchFeeds(true)
   }
@@ -186,12 +192,24 @@ defineExpose({
 const platformBadgeLabel = (p?: string) => {
   if (p === 'mp') return '公众号'
   if (p === 'xhs') return '小红书'
+  if (p === 'dy') return '抖音'
+  if (p === 'bili') return 'B站'
+  if (p === 'x') return 'X'
+  if (p === 'tiktok') return 'TikTok'
+  if (p === 'youtube') return 'YouTube'
+  if (p === 'instagram') return 'Instagram'
   return ''
 }
 
 const platformBadgeColor = (p?: string) => {
   if (p === 'mp') return '#165DFF'
   if (p === 'xhs') return '#F53F3F'
+  if (p === 'dy') return '#111111'
+  if (p === 'bili') return '#00A1D6'
+  if (p === 'x') return '#111111'
+  if (p === 'tiktok') return '#111111'
+  if (p === 'youtube') return '#FF0000'
+  if (p === 'instagram') return '#C13584'
   return '#86909C'
 }
 

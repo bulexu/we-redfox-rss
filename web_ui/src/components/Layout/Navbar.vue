@@ -15,13 +15,29 @@
         <template #icon><icon-fire /></template>
         小红书
       </a-menu-item>
-      <a-menu-item key="platform-douyin" disabled>
+      <a-menu-item key="/douyin/feeds">
         <template #icon><icon-tiktok-color /></template>
         抖音
       </a-menu-item>
-      <a-menu-item key="platform-bilibili" disabled>
+      <a-menu-item key="/bilibili/feeds">
         <template #icon><icon-play-circle /></template>
         B 站
+      </a-menu-item>
+      <a-menu-item key="/x/feeds">
+        <template #icon><icon-twitter /></template>
+        X
+      </a-menu-item>
+      <a-menu-item key="/tiktok/feeds">
+        <template #icon><icon-tiktok-color /></template>
+        TikTok
+      </a-menu-item>
+      <a-menu-item key="/youtube/feeds">
+        <template #icon><icon-play-circle /></template>
+        YouTube
+      </a-menu-item>
+      <a-menu-item key="/instagram/feeds">
+        <template #icon><icon-camera /></template>
+        Instagram
       </a-menu-item>
     </a-sub-menu>
 
@@ -97,7 +113,7 @@ const handleMenuClick = (key: string) => {
     })
     return
   }
-  // 「平台选择」下拉里只处理 WeChat / XHS key (其它 key 是 disabled,  Arco 不会触发)
+  // 「平台选择」下拉里的平台路由都以 / 开头。
   if (!key.startsWith('/')) return
   if (route.path === key) return
   router.push(key).catch((err) => {

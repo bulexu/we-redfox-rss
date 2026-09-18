@@ -158,7 +158,7 @@ class RedfoxClient:
         """
         if not isinstance(payload, dict):
             return ""
-        for k in ("account", "wxId", "bizInfo", "keyword", "userId"):
+        for k in ("account", "wxId", "bizInfo", "keyword", "userId", "accountId"):
             v = payload.get(k)
             if v:
                 return str(v)[:128]
@@ -203,7 +203,7 @@ class RedfoxClient:
         endpoint: str,
         request_payload: Dict[str, Any],
         sdk_op: Callable[[], Any],
-    ) -> Dict[str, Any]:
+    ) -> Any:
         """统一的 SDK 调用入口:  计时 + 异常归一 + 日志记录。
 
         Args:
@@ -271,7 +271,9 @@ class RedfoxClient:
 
         latency = int((time.time() - started) * 1000)
         # SDK 已自动校验 code=2000 并解包 data,  这里只是拿到 dict
-        data_dict = data if isinstance(data, dict) else {}
+        # 大多数端点返回 dict；TikTok 关键词视频搜索的 data 顶层则是 list。
+        # 保留 SDK 解包后的两种合法结构，避免数组响应被误丢弃成空字典。
+        data_dict = data if isinstance(data, (dict, list)) else {}
         self._record_call(
             endpoint=endpoint,
             success=True,

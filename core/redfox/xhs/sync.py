@@ -101,13 +101,16 @@ def _normalize_note(note: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
     cover_url = note.get("coverUrl") or ""
+    # Redfox 偶尔返回要求 CDN 输出 HEIF 的封面链接。Chrome/Edge 在 Windows
+    # 上通常无法直接渲染 HEIF，而小红书 CDN 接受相同链接输出 WebP。
+    cover_url = cover_url.replace("format/heif", "format/webp")
     image_urls_json = json.dumps([cover_url], ensure_ascii=False) if cover_url else "[]"
 
     return {
         "id": work_id,
         "title": (note.get("workTitle") or "")[:1000],
         "content": note.get("workDesc") or "",
-        "pic_url": cover_url[:500] if cover_url else None,
+        "pic_url": cover_url if cover_url else None,
         "url": note.get("workUrl") or "",
         "publish_time": parse_work_publish_time(note.get("workPublishTime") or ""),
         "author": (note.get("accountNickname") or "")[:255] or None,

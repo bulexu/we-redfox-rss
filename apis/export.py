@@ -5,8 +5,14 @@ from starlette.background import BackgroundTask
 from core.auth import get_current_user_or_ak
 from core.db import DB
 from core.wx import search_Biz
-from core.models.feed import Feed, PLATFORM_MP, PLATFORM_XHS, infer_platform_from_id
+from core.models.feed import Feed, PLATFORM_BILI, PLATFORM_DY, PLATFORM_INSTAGRAM, PLATFORM_MP, PLATFORM_TIKTOK, PLATFORM_X, PLATFORM_XHS, PLATFORM_YOUTUBE, infer_platform_from_id
 from core.redfox.xhs.sync import XHS_KW_PREFIX, XHS_U_PREFIX
+from core.redfox.douyin.sync import DY_KW_PREFIX
+from core.redfox.bilibili.sync import BILI_KW_PREFIX
+from core.redfox.x.sync import X_KW_PREFIX
+from core.redfox.tiktok.sync import TIKTOK_KW_PREFIX
+from core.redfox.youtube.sync import YOUTUBE_KW_PREFIX
+from core.redfox.instagram.sync import INSTAGRAM_KW_PREFIX
 from .base import success_response, error_response
 from datetime import datetime
 from core.config import cfg
@@ -48,6 +54,48 @@ _EXCEL_SHEETS = [
             f.created_at.isoformat() if f.created_at else "",
         ],
     ),
+    (
+        "抖音-关键词",
+        ["id", "关键词(target)", "显示名", "封面", "简介", "状态", "创建时间"],
+        lambda f: [
+            f.id, getattr(f, "target", "") or "", f.name or "",
+            f.cover or "", f.intro or "", f.status,
+            f.created_at.isoformat() if f.created_at else "",
+        ],
+    ),
+    (
+        "B站-关键词",
+        ["id", "关键词(target)", "显示名", "封面", "简介", "状态", "创建时间"],
+        lambda f: [
+            f.id, getattr(f, "target", "") or "", f.name or "",
+            f.cover or "", f.intro or "", f.status,
+            f.created_at.isoformat() if f.created_at else "",
+        ],
+    ),
+    (
+        "X-关键词",
+        ["id", "关键词(target)", "显示名", "封面", "简介", "状态", "创建时间"],
+        lambda f: [
+            f.id, getattr(f, "target", "") or "", f.name or "",
+            f.cover or "", f.intro or "", f.status,
+            f.created_at.isoformat() if f.created_at else "",
+        ],
+    ),
+    (
+        "TikTok-关键词",
+        ["id", "关键词(target)", "显示名", "封面", "简介", "状态", "创建时间"],
+        lambda f: [f.id, getattr(f, "target", "") or "", f.name or "", f.cover or "", f.intro or "", f.status, f.created_at.isoformat() if f.created_at else ""],
+    ),
+    (
+        "YouTube-关键词",
+        ["id", "关键词(target)", "显示名", "封面", "简介", "状态", "创建时间"],
+        lambda f: [f.id, getattr(f, "target", "") or "", f.name or "", f.cover or "", f.intro or "", f.status, f.created_at.isoformat() if f.created_at else ""],
+    ),
+    (
+        "Instagram-关键词",
+        ["id", "关键词(target)", "显示名", "封面", "简介", "状态", "创建时间"],
+        lambda f: [f.id, getattr(f, "target", "") or "", f.name or "", f.cover or "", f.intro or "", f.status, f.created_at.isoformat() if f.created_at else ""],
+    ),
 ]
 
 
@@ -61,6 +109,21 @@ def _classify_feed_for_export(feed: Feed) -> str | None:
             return "小红书-关键词"
         if feed.id.startswith(XHS_U_PREFIX):
             return "小红书-账号"
+    if platform == PLATFORM_DY:
+        if feed.id.startswith(DY_KW_PREFIX):
+            return "抖音-关键词"
+    if platform == PLATFORM_BILI:
+        if feed.id.startswith(BILI_KW_PREFIX):
+            return "B站-关键词"
+    if platform == PLATFORM_X:
+        if feed.id.startswith(X_KW_PREFIX):
+            return "X-关键词"
+    if platform == PLATFORM_TIKTOK and feed.id.startswith(TIKTOK_KW_PREFIX):
+        return "TikTok-关键词"
+    if platform == PLATFORM_YOUTUBE and feed.id.startswith(YOUTUBE_KW_PREFIX):
+        return "YouTube-关键词"
+    if platform == PLATFORM_INSTAGRAM and feed.id.startswith(INSTAGRAM_KW_PREFIX):
+        return "Instagram-关键词"
     return None
 
 

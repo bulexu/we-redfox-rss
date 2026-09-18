@@ -7,6 +7,8 @@ export interface MessageTask {
   headers?: string
   cookies?: string
   target_feed_ids: any // JSON类型
+  scope_type?: 'all' | 'platforms' | 'custom' | 'legacy'
+  target_platforms?: any
   status: number
   cron_exp?: string
   created_at?: string
@@ -21,6 +23,8 @@ export interface MessageTaskCreate {
   headers?: string
   cookies?: string
   target_feed_ids: any
+  scope_type: 'all' | 'platforms' | 'custom'
+  target_platforms: any
   status?: number
   cron_exp?: string
 }
@@ -33,6 +37,8 @@ export interface MessageTaskUpdate {
   headers?: string
   cookies?: string
   target_feed_ids?: any
+  scope_type?: 'all' | 'platforms' | 'custom'
+  target_platforms?: any
   status?: number
   cron_exp?: string
 }

@@ -1,0 +1,1 @@
+import{t as e}from"./http-BZILK-92.js";var t=t=>e.get(`/tags`,{params:{offset:t?.offset||0,limit:t?.limit||100}}),n=t=>e.get(`/tags/${t}`),r=t=>e.post(`/tags`,t),i=(t,n)=>e.put(`/tags/${t}`,n),a=t=>e.delete(`/tags/${t}`);export{i as a,t as i,a as n,n as r,r as t};

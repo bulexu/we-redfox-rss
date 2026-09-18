@@ -24,6 +24,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .base import Base, Column, String, Integer, DateTime, Boolean, Text
 
+ALLOWED_PUSH_INTERVAL_HOURS: tuple[int, ...] = (1, 2, 4, 6, 12, 24)
+
 
 class LarkBitable(Base):
     """一个飞书多维表 (Bitable) 的推送配置。
@@ -43,6 +45,8 @@ class LarkBitable(Base):
     feed_ids = Column(Text, default="[]", nullable=False)
     field_mapping = Column(Text, default="{}", nullable=False)
     enabled = Column(Boolean, default=True, nullable=False)
+    # 每张多维表独立的自动写入间隔。
+    push_interval_hours = Column(Integer, default=6, nullable=False)
     last_pushed_at = Column(BigInteger, nullable=True)
     last_error = Column(Text, nullable=True)
     last_error_at = Column(BigInteger, nullable=True)
@@ -85,6 +89,7 @@ class LarkBitable(Base):
             "feed_ids": self.get_feed_ids(),
             "field_mapping": self.get_field_mapping(),
             "enabled": bool(self.enabled),
+            "push_interval_hours": int(self.push_interval_hours or 6),
             "last_pushed_at": self.last_pushed_at,
             "last_error": self.last_error,
             "last_error_at": self.last_error_at,

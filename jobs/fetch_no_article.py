@@ -12,16 +12,19 @@ def fetch_articles_without_content():
     """
     session = DB.get_session()
     try:
-        # 持续重试语义:has_content == 0 且未被锁定/未删除的文章都会被本任务拉起,
+        # 该 Playwright 解析器只支持微信公众号页面，因此必须限制 MP_WXS_ feed。
+        # 其他平台直接使用 Redfox 返回的标题/正文，不能交给微信页面解析器。
+        # 持续重试语义:公众号中 has_content == 0 且未被锁定/未删除的文章
+        # 都会被本任务拉起,
         # 抓取失败后留在 DB,等下一次 cron (默认 content_auto_interval=59 分钟) 再来一次。
         # 没有重试上限 —— 由调度间隔 + 人工干预 (修改 has_content/status) 控制节奏。
         # 注:fix_fail_count 字段仍由 sync_article_content 维护,只用于:
         #   1. DB 写异常 (fix_html 等) 的失败计数;
         #   2. 监控 / 排查时观察某篇文章的写库异常次数。
         # 它不再作为"停止重试"的硬门,避免误把可恢复的文章锁死。
-        from sqlalchemy import or_
         articles = session.query(Article).filter(
-            or_(Article.has_content==0),
+            Article.feed_id.like("MP_WXS_%"),
+            Article.has_content == 0,
             Article.status != DATA_STATUS.FETCHING,  # 排除正在获取的文章
             Article.status != DATA_STATUS.DELETED,  # 已删除文章不再参与自动补抓
         ).order_by(Article.publish_time.desc()).limit(10).all()

@@ -10,6 +10,8 @@ class MessageTask(Base):
     ``platform`` 取值:
       * ``wechat`` (默认): 公众号采集任务
       * ``xhs``:           小红书关键词/账号订阅任务
+      * ``dy``:            抖音关键词订阅任务（广域库）
+      * ``bili``:          B站关键词订阅任务（优质库）
 
     ``target_feed_ids`` 为 JSON 字符串, 存的是 ``Feed.id`` 列表,
     公众号侧兼容旧行为 (历史数据里也曾叫 ``mps_id``)。
@@ -36,7 +38,11 @@ class MessageTask(Base):
     # 定义需要通知的 feed 列表（JSON 字符串），改名自 mps_id（公众号 fakeid 列表），
     # 现在统一用 Feed.id, 公众号 fakeid 也是合法 Feed.id (MP_WXS_xxx)。
     target_feed_ids = Column(Text, nullable=False)
-    # 平台标识: 'wechat' / 'xhs'（默认 'wechat' 兼容历史）
+    # 抓取范围: legacy=兼容历史数据, all=全部平台, platforms=整个平台,
+    # custom=指定订阅。target_platforms 是 JSON 字符串列表。
+    scope_type = Column(String(20), default='legacy', nullable=False)
+    target_platforms = Column(Text, default='[]', nullable=False)
+    # 平台标识: 'wechat' / 'xhs' / 'dy' / 'bili'（默认 'wechat' 兼容历史）
     platform = Column(String(20), default='wechat', index=True)
     # 定义 cron_exp 表达式
     cron_exp=Column(String(100),nullable='* * 1 * *')

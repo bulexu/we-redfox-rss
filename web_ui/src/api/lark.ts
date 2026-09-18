@@ -8,6 +8,7 @@ export interface LarkBitable {
   feed_ids: string[]
   field_mapping: Record<string, string>
   enabled: boolean
+  push_interval_hours: 1 | 2 | 4 | 6 | 12 | 24
   last_pushed_at: number | null
   last_error: string | null
   last_error_at: number | null
@@ -29,6 +30,7 @@ export interface CreateBitableRequest {
   feed_ids: string[]
   field_mapping: Record<string, string>
   enabled: boolean
+  push_interval_hours: 1 | 2 | 4 | 6 | 12 | 24
 }
 
 export interface UpdateBitableRequest {
@@ -38,6 +40,7 @@ export interface UpdateBitableRequest {
   feed_ids?: string[]
   field_mapping?: Record<string, string>
   enabled?: boolean
+  push_interval_hours?: 1 | 2 | 4 | 6 | 12 | 24
 }
 
 export interface LarkFieldInfo {

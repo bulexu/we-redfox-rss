@@ -278,6 +278,90 @@ const routes = [
           query: to.query,
         }),
       },
+      {
+        path: 'douyin/feeds',
+        name: 'DouyinFeeds',
+        component: () => import('@/views/douyin/DouyinListDesktop.vue'),
+        meta: {
+          requiresAuth: true,
+          permissions: ['feed:manage']
+        }
+      },
+      {
+        path: 'douyin/subscriptions',
+        name: 'DouyinSubscriptions',
+        component: () => import('@/views/douyin/DouyinSubscriptions.vue'),
+        meta: {
+          requiresAuth: true,
+          permissions: ['feed:manage']
+        }
+      },
+      {
+        path: 'bilibili/feeds',
+        name: 'BilibiliFeeds',
+        component: () => import('@/views/bilibili/BilibiliListDesktop.vue'),
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'bilibili/subscriptions',
+        name: 'BilibiliSubscriptions',
+        component: () => import('@/views/bilibili/BilibiliSubscriptions.vue'),
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'x/feeds',
+        name: 'XFeeds',
+        component: () => import('@/views/x/XListDesktop.vue'),
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'x/subscriptions',
+        name: 'XSubscriptions',
+        component: () => import('@/views/x/XSubscriptions.vue'),
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'tiktok/feeds',
+        name: 'TikTokFeeds',
+        component: () => import('@/views/overseas/KeywordListDesktop.vue'),
+        props: { platform:'tiktok', label:'TikTok', contentName:'视频' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'tiktok/subscriptions',
+        name: 'TikTokSubscriptions',
+        component: () => import('@/views/overseas/KeywordSubscriptions.vue'),
+        props: { platform:'tiktok', label:'TikTok', contentName:'视频', notice:'TikTok目前只支持关键词订阅，默认搜索美国区（US），按相关度返回；接口不提供 exactMatch 参数。', placeholder:'例如：AI / cycling' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'youtube/feeds',
+        name: 'YouTubeFeeds',
+        component: () => import('@/views/overseas/KeywordListDesktop.vue'),
+        props: { platform:'youtube', label:'YouTube', contentName:'视频' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'youtube/subscriptions',
+        name: 'YouTubeSubscriptions',
+        component: () => import('@/views/overseas/KeywordSubscriptions.vue'),
+        props: { platform:'youtube', label:'YouTube', contentName:'视频', notice:'YouTube目前只支持关键词订阅，通过 continuationToken 自动翻页；接口不提供 exactMatch 参数。', placeholder:'例如：AI tools / cycling' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'instagram/feeds',
+        name: 'InstagramFeeds',
+        component: () => import('@/views/overseas/KeywordListDesktop.vue'),
+        props: { platform:'instagram', label:'Instagram', contentName:'帖子' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'instagram/subscriptions',
+        name: 'InstagramSubscriptions',
+        component: () => import('@/views/overseas/KeywordSubscriptions.vue'),
+        props: { platform:'instagram', label:'Instagram', contentName:'帖子', notice:'Instagram目前只支持关键词订阅，可返回图片、视频和轮播帖子；接口不提供 exactMatch 参数。', placeholder:'例如：travel / cycling' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
     ]
   },
   {

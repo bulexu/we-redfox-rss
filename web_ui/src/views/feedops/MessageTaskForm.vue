@@ -17,6 +17,28 @@ const showCronPicker = ref(false)
 const showMpSelector = ref(false)
 const activeTab = ref('basic')
 
+const platformOptions = [
+  { label: '公众号', value: 'mp' },
+  { label: '小红书', value: 'xhs' },
+  { label: '抖音', value: 'dy' },
+  { label: 'B站', value: 'bili' },
+  { label: 'X', value: 'x' },
+  { label: 'TikTok', value: 'tiktok' },
+  { label: 'YouTube', value: 'youtube' },
+  { label: 'Instagram', value: 'instagram' },
+]
+
+const parseList = (value: any): any[] => {
+  if (Array.isArray(value)) return value
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 const cronPickerRef = ref<InstanceType<typeof cronExpressionPicker> | null>(null)
 const mpSelectorRef = ref<InstanceType<typeof FeedMultiSelect> | null>(null)
 
@@ -27,6 +49,8 @@ const formData = ref<MessageTaskCreate>({
   web_hook_url: '',
   headers: '',
   cookies: '',
+  scope_type: 'all',
+  target_platforms: [],
   target_feed_ids: [] as FeedItem[],
   status: 1,
   cron_exp: '*/5 * * * *'
@@ -36,6 +60,19 @@ const fetchTaskDetail = async (id: string) => {
   loading.value = true
   try {
     const res = await getMessageTask(id)
+    const selectedFeeds = parseList(res.target_feed_ids)
+    let scopeType = res.scope_type
+    let targetPlatforms = parseList(res.target_platforms)
+    // 兼容升级前创建的任务：具体订阅优先；空列表仍按旧 platform 的整个平台处理。
+    if (!['all', 'platforms', 'custom'].includes(scopeType)) {
+      if (selectedFeeds.length) {
+        scopeType = 'custom'
+      } else {
+        scopeType = 'platforms'
+        const legacyPlatform = ['wechat', 'wx', 'weixin'].includes(res.platform) ? 'mp' : res.platform
+        targetPlatforms = legacyPlatform ? [legacyPlatform] : ['mp']
+      }
+    }
     formData.value = {
       name: res.name || '',
       message_type: res.message_type || 0,
@@ -43,7 +80,9 @@ const fetchTaskDetail = async (id: string) => {
       web_hook_url: res.web_hook_url || '',
       headers: res.headers || '',
       cookies: res.cookies || '',
-      target_feed_ids: res.target_feed_ids ? JSON.parse(res.target_feed_ids) : [],
+      scope_type: scopeType,
+      target_platforms: targetPlatforms,
+      target_feed_ids: selectedFeeds,
       status: res.status || 0,
       cron_exp: res.cron_exp || '*/5 * * * *'
     }
@@ -76,13 +115,29 @@ const handleSubmit = async () => {
     return
   }
 
+  if (formData.value.scope_type === 'platforms' && !formData.value.target_platforms?.length) {
+    Message.error('请至少选择一个平台')
+    loading.value = false
+    return
+  }
+  if (formData.value.scope_type === 'custom' && !formData.value.target_feed_ids?.length) {
+    Message.error('请至少选择一个具体订阅')
+    loading.value = false
+    return
+  }
+
 
     loading.value = true
     // 后端 Pydantic 已直接命名为 target_feed_ids (commit 1 改名 mps_id → target_feed_ids),
     // 这里直接传 JSON 字符串,不再做 Pydantic→ORM 字段映射。
     const submitData: MessageTaskCreate = {
       ...formData.value,
-      target_feed_ids: JSON.stringify(formData.value.target_feed_ids),
+      target_platforms: JSON.stringify(
+        formData.value.scope_type === 'platforms' ? formData.value.target_platforms : []
+      ),
+      target_feed_ids: JSON.stringify(
+        formData.value.scope_type === 'custom' ? formData.value.target_feed_ids : []
+      ),
     }
 
     if (isEditMode.value && taskId.value) {
@@ -193,11 +248,46 @@ onMounted(() => {
               </a-space>
             </a-form-item>
 
-            <a-form-item label="关联订阅" field="target_feed_ids">
+            <a-form-item label="抓取范围" field="scope_type">
+              <a-radio-group v-model="formData.scope_type" type="button">
+                <a-radio value="all">全选</a-radio>
+                <a-radio value="platforms">按平台选择</a-radio>
+                <a-radio value="custom">自定义选择</a-radio>
+              </a-radio-group>
+              <template #extra>
+                <span v-if="formData.scope_type === 'all'">抓取所有平台中已启用的全部订阅</span>
+                <span v-else-if="formData.scope_type === 'platforms'">抓取所选平台中已启用的全部订阅</span>
+                <span v-else>只抓取关联订阅中选中的具体订阅</span>
+              </template>
+            </a-form-item>
+
+            <a-form-item
+              v-if="formData.scope_type === 'platforms'"
+              label="选择平台"
+              field="target_platforms"
+              required
+            >
+              <a-checkbox-group v-model="formData.target_platforms">
+                <a-space wrap>
+                  <a-checkbox
+                    v-for="item in platformOptions"
+                    :key="item.value"
+                    :value="item.value"
+                  >{{ item.label }}</a-checkbox>
+                </a-space>
+              </a-checkbox-group>
+            </a-form-item>
+
+            <a-form-item
+              v-if="formData.scope_type === 'custom'"
+              label="关联订阅"
+              field="target_feed_ids"
+              required
+            >
               <a-space>
                 <a-input
                   :model-value="(formData.target_feed_ids||[]).map((mp: any) => mp.id?.toString() || mp.toString()).join(',')"
-                  placeholder="请选择订阅 (公众号/小红书)，留空则对所有生效"
+                  placeholder="请选择一个或多个平台中的具体订阅"
                   readonly
                   style="width: 300px"
                 />

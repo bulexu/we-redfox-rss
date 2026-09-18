@@ -8,7 +8,7 @@ import json
 import time
 import traceback
 import uuid
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ class CreateBitableRequest(BaseModel):
     feed_ids: List[str] = Field(default_factory=list)
     field_mapping: dict = Field(default_factory=dict)
     enabled: bool = True
+    push_interval_hours: Literal[1, 2, 4, 6, 12, 24] = 6
 
 
 class UpdateBitableRequest(BaseModel):
@@ -47,6 +48,7 @@ class UpdateBitableRequest(BaseModel):
     feed_ids: Optional[List[str]] = None
     field_mapping: Optional[dict] = None
     enabled: Optional[bool] = None
+    push_interval_hours: Optional[Literal[1, 2, 4, 6, 12, 24]] = None
 
 
 class ManualPushRequest(BaseModel):
@@ -67,12 +69,23 @@ def _bitable_to_dict(b: LarkBitable) -> dict:
         "feed_ids": b.get_feed_ids(),
         "field_mapping": b.get_field_mapping(),
         "enabled": bool(b.enabled),
+        "push_interval_hours": int(b.push_interval_hours or 6),
         "last_pushed_at": b.last_pushed_at,
         "last_error": b.last_error,
         "last_error_at": b.last_error_at,
         "created_at": b.created_at.isoformat() if b.created_at else None,
         "updated_at": b.updated_at.isoformat() if b.updated_at else None,
     }
+
+
+def _reload_lark_scheduler() -> None:
+    """配置增删改后立即刷新每张多维表的独立定时任务。"""
+    try:
+        from jobs.lark_push import reload_lark_push_scheduler
+        reload_lark_push_scheduler()
+    except Exception as exc:  # noqa: BLE001
+        # 保存配置不应因调度器刷新失败而回滚；重启服务仍会重新注册。
+        print_warning(f"[lark] 刷新自动写入调度器失败: {exc}")
 
 
 # ===== CRUD =====
@@ -132,10 +145,12 @@ async def create_bitable(
             feed_ids=json.dumps(feed_ids, ensure_ascii=False),
             field_mapping=json.dumps(normalized_mapping, ensure_ascii=False),
             enabled=bool(req.enabled),
+            push_interval_hours=req.push_interval_hours,
         )
         session.add(bitable)
         session.commit()
         session.refresh(bitable)
+        _reload_lark_scheduler()
         return success_response(_bitable_to_dict(bitable), "创建成功")
     except Exception as e:
         session.rollback()
@@ -194,9 +209,12 @@ async def update_bitable(
             b.set_field_mapping(normalized)
         if req.enabled is not None:
             b.enabled = bool(req.enabled)
+        if req.push_interval_hours is not None:
+            b.push_interval_hours = req.push_interval_hours
 
         session.commit()
         session.refresh(b)
+        _reload_lark_scheduler()
         return success_response(_bitable_to_dict(b), "更新成功")
     except Exception as e:
         session.rollback()
@@ -220,6 +238,7 @@ async def delete_bitable(
             return error_response(code=404, message="多维表配置不存在")
         session.delete(b)
         session.commit()
+        _reload_lark_scheduler()
         return success_response(message="删除成功")
     except Exception as e:
         session.rollback()
@@ -351,7 +370,7 @@ async def manual_push(
                 })
                 continue
             try:
-                lark_maybe_push(art.id)
+                lark_maybe_push(art.id, bitable_id=b.id)
                 results.append({
                     "article_id": art.id,
                     "ok": True,

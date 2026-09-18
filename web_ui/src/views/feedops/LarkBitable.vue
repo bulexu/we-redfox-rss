@@ -54,6 +54,7 @@ const formData = reactive<{
   selected_mps: FeedItem[]
   mapping_rows: MappingRow[]
   enabled: boolean
+  push_interval_hours: 1 | 2 | 4 | 6 | 12 | 24
 }>({
   name: '',
   app_token: '',
@@ -61,6 +62,7 @@ const formData = reactive<{
   selected_mps: [],
   mapping_rows: [{ key: '', value: '' }],
   enabled: true,
+  push_interval_hours: 6,
 })
 
 const testResult = ref<TestBitableResp | null>(null)
@@ -103,6 +105,7 @@ const columns = [
   { title: 'App Token', dataIndex: 'app_token', width: 200, ellipsis: true, tooltip: true },
   { title: 'Table ID', dataIndex: 'table_id', width: 200, ellipsis: true, tooltip: true },
   { title: '关联公众号', slotName: 'feed_ids', width: 80 },
+  { title: '自动写入', slotName: 'push_interval', width: 110 },
   { title: '最近推送', slotName: 'last_pushed', width: 200 },
   { title: '操作', slotName: 'action', width: 200, fixed: 'right' },
 ]
@@ -123,6 +126,7 @@ const resetForm = () => {
   formData.selected_mps = []
   formData.mapping_rows = [{ key: '', value: '' }]
   formData.enabled = true
+  formData.push_interval_hours = 6
   editingId.value = null
 }
 
@@ -138,6 +142,7 @@ const showEdit = async (b: LarkBitable) => {
   formData.app_token = b.app_token
   formData.table_id = b.table_id
   formData.enabled = !!b.enabled
+  formData.push_interval_hours = b.push_interval_hours || 6
   // 把后端存的 feed_ids 字符串数组转成 FeedItem[] 占位,
 // 打开选择器后 FeedMultiSelect.parseSelected 会尝试用搜索结果补全 mp_name/cover。
   formData.selected_mps = (b.feed_ids || []).map((id) => ({
@@ -193,6 +198,7 @@ const collectPayload = (): CreateBitableRequest | UpdateBitableRequest => {
     feed_ids: dedup,
     field_mapping,
     enabled: formData.enabled,
+    push_interval_hours: formData.push_interval_hours,
   }
 }
 
@@ -519,6 +525,9 @@ const statusEnabled = computed(() => larkStatus.value?.enabled ?? false)
             {{ record.feed_ids?.length }}
           </a-tag>
         </template>
+        <template #push_interval="{ record }">
+          <span>每 {{ record.push_interval_hours || 6 }} 小时</span>
+        </template>
         <template #field_mapping="{ record }">
           <a-tag
             v-for="(v, k) in record.field_mapping"
@@ -600,6 +609,17 @@ const statusEnabled = computed(() => larkStatus.value?.enabled ?? false)
               <a-button @click="openMpSelector">选择</a-button>
             </template>
           </a-input>
+        </a-form-item>
+        <a-form-item label="自动写入间隔" required>
+          <a-select v-model="formData.push_interval_hours" placeholder="请选择自动写入间隔">
+            <a-option :value="1">每隔 1 小时</a-option>
+            <a-option :value="2">每隔 2 小时</a-option>
+            <a-option :value="4">每隔 4 小时</a-option>
+            <a-option :value="6">每隔 6 小时</a-option>
+            <a-option :value="12">每隔 12 小时</a-option>
+            <a-option :value="24">每隔 24 小时</a-option>
+          </a-select>
+          <template #extra>启用配置后，系统会按此间隔把新增文章自动写入该多维表。</template>
         </a-form-item>
         <a-form-item>
           <a-checkbox v-model="formData.enabled">启用此配置</a-checkbox>

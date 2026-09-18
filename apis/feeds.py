@@ -18,12 +18,24 @@ from core.auth import get_current_user_or_ak
 from core.db import DB
 from core.models.feed import (
     Feed,
+    PLATFORM_BILI,
+    PLATFORM_DY,
+    PLATFORM_INSTAGRAM,
     PLATFORM_MP,
+    PLATFORM_TIKTOK,
+    PLATFORM_X,
     PLATFORM_UNKNOWN,
     PLATFORM_XHS,
+    PLATFORM_YOUTUBE,
     infer_platform_from_id,
 )
 from core.redfox.xhs.sync import XHS_KW_PREFIX, XHS_U_PREFIX
+from core.redfox.douyin.sync import DY_KW_PREFIX
+from core.redfox.bilibili.sync import BILI_KW_PREFIX
+from core.redfox.x.sync import X_KW_PREFIX
+from core.redfox.tiktok.sync import TIKTOK_KW_PREFIX
+from core.redfox.youtube.sync import YOUTUBE_KW_PREFIX
+from core.redfox.instagram.sync import INSTAGRAM_KW_PREFIX
 from .base import error_response, success_response
 
 router = APIRouter(prefix="/feeds", tags=["通用 Feed"])
@@ -38,7 +50,10 @@ def _feed_to_selector_item(f: Feed) -> dict:
     """
     platform = f.platform or infer_platform_from_id(f.id)
     target = ""
-    if platform == PLATFORM_XHS and f.target:
+    if platform in (
+        PLATFORM_XHS, PLATFORM_DY, PLATFORM_BILI, PLATFORM_X,
+        PLATFORM_TIKTOK, PLATFORM_YOUTUBE, PLATFORM_INSTAGRAM,
+    ) and f.target:
         target = f.target
     return {
         "id": f.id,
@@ -55,8 +70,8 @@ def _feed_to_selector_item(f: Feed) -> dict:
 async def list_feeds(
     platform: Optional[str] = Query(
         None,
-        pattern="^(mp|xhs)$",
-        description="平台过滤: mp / xhs; 不传=全部",
+        pattern="^(mp|xhs|dy|bili|x|tiktok|youtube|instagram)$",
+        description="平台过滤: mp / xhs / dy / bili / x / tiktok / youtube / instagram; 不传=全部",
     ),
     status: Optional[int] = Query(None, ge=0, le=1, description="状态过滤: 0=禁用 1=启用"),
     kw: Optional[str] = Query(None, max_length=100, description="按名称模糊搜索"),
@@ -84,12 +99,42 @@ async def list_feeds(
             ).filter(
                 (Feed.id.like(f"{XHS_KW_PREFIX}%")) | (Feed.id.like(f"{XHS_U_PREFIX}%"))
             )
+        elif platform == PLATFORM_DY:
+            query = session.query(Feed).filter(
+                (Feed.platform == PLATFORM_DY) | Feed.platform.is_(None),
+            ).filter(Feed.id.like(f"{DY_KW_PREFIX}%"))
+        elif platform == PLATFORM_BILI:
+            query = session.query(Feed).filter(
+                (Feed.platform == PLATFORM_BILI) | Feed.platform.is_(None),
+            ).filter(Feed.id.like(f"{BILI_KW_PREFIX}%"))
+        elif platform == PLATFORM_X:
+            query = session.query(Feed).filter(
+                (Feed.platform == PLATFORM_X) | Feed.platform.is_(None),
+            ).filter(Feed.id.like(f"{X_KW_PREFIX}%"))
+        elif platform == PLATFORM_TIKTOK:
+            query = session.query(Feed).filter(
+                (Feed.platform == PLATFORM_TIKTOK) | Feed.platform.is_(None),
+            ).filter(Feed.id.like(f"{TIKTOK_KW_PREFIX}%"))
+        elif platform == PLATFORM_YOUTUBE:
+            query = session.query(Feed).filter(
+                (Feed.platform == PLATFORM_YOUTUBE) | Feed.platform.is_(None),
+            ).filter(Feed.id.like(f"{YOUTUBE_KW_PREFIX}%"))
+        elif platform == PLATFORM_INSTAGRAM:
+            query = session.query(Feed).filter(
+                (Feed.platform == PLATFORM_INSTAGRAM) | Feed.platform.is_(None),
+            ).filter(Feed.id.like(f"{INSTAGRAM_KW_PREFIX}%"))
         else:
             # 全部平台: 限定已知 id 前缀,排除 FEATURED_MP_ID 与历史脏数据
             query = session.query(Feed).filter(
                 Feed.id.like("MP_WXS_%")
                 | Feed.id.like(f"{XHS_KW_PREFIX}%")
                 | Feed.id.like(f"{XHS_U_PREFIX}%")
+                | Feed.id.like(f"{DY_KW_PREFIX}%")
+                | Feed.id.like(f"{BILI_KW_PREFIX}%")
+                | Feed.id.like(f"{X_KW_PREFIX}%")
+                | Feed.id.like(f"{TIKTOK_KW_PREFIX}%")
+                | Feed.id.like(f"{YOUTUBE_KW_PREFIX}%")
+                | Feed.id.like(f"{INSTAGRAM_KW_PREFIX}%")
             )
 
         if status is not None:

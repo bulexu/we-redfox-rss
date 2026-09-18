@@ -454,7 +454,9 @@ async def get_articles(
         }
 
         # 构建查询条件 - 使用 ArticleBase 模型（不包含 content 字段，加速查询）
-        query = session.query(ArticleBase)
+        # 本接口是公众号页面专用。articles 表由多个平台共用，必须限定公众号
+        # feed 前缀，否则 XHS / DY 作品会混入“全部公众号文章”。
+        query = session.query(ArticleBase).filter(ArticleBase.feed_id.like("MP_WXS_%"))
 
         # 支持多个状态值（逗号分隔），将字符串映射为状态码
         if status:

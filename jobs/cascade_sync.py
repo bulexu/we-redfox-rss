@@ -160,6 +160,9 @@ class CascadeSyncService:
                         # 改名自 mps_id (commit 65aaffd1): 父节点 apis/cascade.py:379
                         # 返回的也是 target_feed_ids,  下面接收端改成同名键
                         existing_task.target_feed_ids = task_data["target_feed_ids"]
+                        existing_task.scope_type = task_data.get("scope_type", "legacy")
+                        existing_task.target_platforms = task_data.get("target_platforms", "[]")
+                        existing_task.platform = task_data.get("platform", "wechat")
                         existing_task.cron_exp = task_data["cron_exp"]
                         existing_task.status = task_data["status"]
                         existing_task.headers = task_data.get("headers", "")
@@ -175,6 +178,9 @@ class CascadeSyncService:
                             web_hook_url=task_data["web_hook_url"],
                             # 改名自 mps_id (commit 65aaffd1)
                             target_feed_ids=task_data["target_feed_ids"],
+                            scope_type=task_data.get("scope_type", "legacy"),
+                            target_platforms=task_data.get("target_platforms", "[]"),
+                            platform=task_data.get("platform", "wechat"),
                             cron_exp=task_data["cron_exp"],
                             status=task_data["status"],
                             headers=task_data.get("headers", ""),

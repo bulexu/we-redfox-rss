@@ -7,10 +7,8 @@
     ``LarkBitable.last_pushed_at`` 作为 publish_time 水印:
       - ``last_pushed_at IS NULL`` (新 Bitable / 升级后被重置):  推送全部命中 mp_ids 的文章
       - ``last_pushed_at = X``:  仅推送 ``article.publish_time > X`` 的文章
-  * 提交:  走 ``lark_maybe_push(article_id)`` 入口(模块级线程池),  不阻塞
-    cron 调度线程本身。worker 内部按 publish_time 倒序处理并抬升水印。
-  * 间隔:  ``lark.push_interval_hours`` 配置,  允许值 0(关闭) / 2 / 4 / 6 / 12 / 24,
-    0 表示关闭自动推送,  仍可通过 ``POST /api/v1/lark/bitables/{id}/push`` 手动推。
+  * 提交: 每张表独立按 publish_time 升序串行写入，避免并发推进水印时跳过旧文章。
+  * 间隔: 每条 ``LarkBitable.push_interval_hours`` 独立配置，可选 1/2/4/6/12/24。
 
 并发安全:
   * 单次扫描限速 ``lark.push_batch_size``,  超出的留到下一轮,  避免 worker 池被
@@ -26,13 +24,12 @@ from core.config import cfg
 from core.db import DB
 from core.models.article import Article
 from core.models.base import DATA_STATUS
-from core.models.lark_bitable import LarkBitable
+from core.models.lark_bitable import ALLOWED_PUSH_INTERVAL_HOURS, LarkBitable
 from core.print import print_info, print_warning
 from core.task import TaskScheduler
 
 # 允许的推送间隔(小时)。 其它值会被规整到列表里最接近的一项,  实在不像就直接关闭。
-ALLOWED_PUSH_INTERVAL_HOURS: tuple[int, ...] = (2, 4, 6, 12, 24)
-PUSH_JOB_ID = "lark_auto_push_scan"
+PUSH_JOB_PREFIX = "lark_auto_push_"
 DEFAULT_BATCH_SIZE = 100
 
 # 独立 scheduler 实例,  与 ``jobs/mps.py`` / ``jobs/fetch_no_article.py``
@@ -97,7 +94,8 @@ def _collect_pending_article_ids(bitable: LarkBitable, batch_size: int) -> List[
                 # 水印过滤:  发布时间晚于上次推送时间(单位毫秒)
                 Article.publish_time > watermark,
             )
-            .order_by(Article.publish_time.desc())
+            # 水印只能按时间向前推进，因此必须从旧到新串行写入。
+            .order_by(Article.publish_time.asc())
             .limit(batch_size)
             .all()
         )
@@ -109,7 +107,7 @@ def _collect_pending_article_ids(bitable: LarkBitable, batch_size: int) -> List[
             pass
 
 
-def scan_pending_push_articles() -> None:
+def scan_pending_push_articles(bitable_id: str | None = None) -> None:
     """cron 回调:  对所有 enabled Bitable 扫描待推送文章并提交 worker。
 
     单个 Bitable 内部是顺序的(同一 Bitable 内的 worker 任务数受
@@ -133,11 +131,12 @@ def scan_pending_push_articles() -> None:
 
         session = DB.get_session()
         try:
-            bitables = (
-                session.query(LarkBitable)
-                .filter(LarkBitable.enabled == True)  # noqa: E712
-                .all()
+            query = session.query(LarkBitable).filter(
+                LarkBitable.enabled == True  # noqa: E712
             )
+            if bitable_id:
+                query = query.filter(LarkBitable.id == bitable_id)
+            bitables = query.all()
         finally:
             try:
                 session.close()
@@ -147,7 +146,7 @@ def scan_pending_push_articles() -> None:
         if not bitables:
             return
 
-        from core.lark_push import lark_maybe_push
+        from core.lark_push import lark_push_bitable_batch
 
         total_submitted = 0
         total_bitables_touched = 0
@@ -168,13 +167,13 @@ def scan_pending_push_articles() -> None:
                 f"[lark] auto-scan bitable={bitable.id}({bitable.name}) "
                 f"待推送 {len(pending_ids)} 条"
             )
-            for aid in pending_ids:
-                try:
-                    lark_maybe_push(aid)
-                    total_submitted += 1
-                except Exception as exc:  # noqa: BLE001
-                    # lark_maybe_push 自身已捕获,  这里只是兜底
-                    print_warning(f"[lark] 提交推送任务失败 article={aid}: {exc}")
+            try:
+                lark_push_bitable_batch(pending_ids, bitable.id)
+                total_submitted += len(pending_ids)
+            except Exception as exc:  # noqa: BLE001
+                print_warning(
+                    f"[lark] 提交批量推送失败 bitable={bitable.id}: {exc}"
+                )
 
         if total_submitted:
             print_info(
@@ -185,48 +184,57 @@ def scan_pending_push_articles() -> None:
         print_warning(f"[lark] auto-scan 整体异常(已吞掉): {exc}")
 
 
-def start_lark_push_scheduler() -> None:
-    """main.py 启动钩子:  按 ``lark.push_interval_hours`` 注册 / 刷新 cron。
+def _remove_lark_jobs() -> None:
+    """只移除飞书自动写入任务，不影响任何其它调度任务。"""
+    for job_id in list(_scheduler.get_job_ids()):
+        if job_id == "lark_auto_push_scan" or job_id.startswith(PUSH_JOB_PREFIX):
+            _scheduler.remove_job(job_id)
 
-    多次调用安全:  先移除同名旧 job 再注册新的,  保证「重启 / reload_job」
-    之后间隔变化生效。
-    """
-    hours = _normalize_interval_hours(cfg.get("lark.push_interval_hours", 0))
-    if hours <= 0:
-        # 关闭自动推送,  同时移除可能存在的旧 job
-        try:
-            _scheduler.remove_job(PUSH_JOB_ID)
-        except Exception:
-            pass
-        print_warning(
-            "[lark] push_interval_hours=0,  自动推送已关闭(可手动调 /push 接口)"
-        )
+
+def start_lark_push_scheduler() -> None:
+    """为每条启用的多维表配置注册独立的自动写入任务。"""
+    _remove_lark_jobs()
+    if not cfg.get("lark.enabled", False):
+        print_warning("[lark] 全局开关未启用，自动写入调度未注册")
         return
 
-    cron_expr = _hours_to_cron(hours)
+    session = DB.get_session()
     try:
-        _scheduler.remove_job(PUSH_JOB_ID)
-    except Exception:
-        pass
+        bitables = session.query(LarkBitable).filter(
+            LarkBitable.enabled == True  # noqa: E712
+        ).all()
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
 
-    _scheduler.add_cron_job(
-        scan_pending_push_articles,
-        cron_expr=cron_expr,
-        job_id=PUSH_JOB_ID,
-        tag="飞书多维表自动推送扫描",
-    )
-    if not _scheduler._scheduler.running:  # noqa: SLF001 — 复用底层状态判断
+    registered = 0
+    for bitable in bitables:
+        hours = _normalize_interval_hours(bitable.push_interval_hours or 6)
+        if hours <= 0:
+            continue
+        cron_expr = _hours_to_cron(hours)
+        job_id = f"{PUSH_JOB_PREFIX}{bitable.id}"
+        _scheduler.add_cron_job(
+            scan_pending_push_articles,
+            cron_expr=cron_expr,
+            kwargs={"bitable_id": bitable.id},
+            job_id=job_id,
+            tag=f"飞书自动写入:{bitable.name}",
+        )
+        registered += 1
+        print_info(
+            f"[lark] 自动写入任务已注册: bitable={bitable.id} "
+            f"cron={cron_expr!r} (每 {hours} 小时一次)"
+        )
+
+    if registered and not _scheduler._scheduler.running:  # noqa: SLF001
         _scheduler.start()
-    print_info(
-        f"[lark] 自动推送扫描任务已注册: cron={cron_expr!r} "
-        f"(每 {hours} 小时一次)"
-    )
+    if not registered:
+        print_warning("[lark] 没有启用的多维表配置，未注册自动写入任务")
 
 
 def reload_lark_push_scheduler() -> None:
-    """暴露给 ``reload_job`` 用,  清掉 scheduler 里所有 lark 相关 job 后重注册。"""
-    try:
-        _scheduler.remove_job(PUSH_JOB_ID)
-    except Exception:
-        pass
+    """配置变更后重建飞书自动写入任务。"""
     start_lark_push_scheduler()

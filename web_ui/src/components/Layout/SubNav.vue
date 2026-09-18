@@ -60,6 +60,36 @@ const xhsItems: SubItem[] = [
   { key: '/xhs/subscriptions', label: '添加订阅', icon: IconPlus },
 ]
 
+const douyinItems: SubItem[] = [
+  { key: '/douyin/feeds', label: '订阅管理', icon: IconHome },
+  { key: '/douyin/subscriptions', label: '添加订阅', icon: IconPlus },
+]
+
+const bilibiliItems: SubItem[] = [
+  { key: '/bilibili/feeds', label: '订阅管理', icon: IconHome },
+  { key: '/bilibili/subscriptions', label: '添加订阅', icon: IconPlus },
+]
+
+const xItems: SubItem[] = [
+  { key: '/x/feeds', label: '订阅管理', icon: IconHome },
+  { key: '/x/subscriptions', label: '添加订阅', icon: IconPlus },
+]
+
+const tiktokItems: SubItem[] = [
+  { key: '/tiktok/feeds', label: '订阅管理', icon: IconHome },
+  { key: '/tiktok/subscriptions', label: '添加订阅', icon: IconPlus },
+]
+
+const youtubeItems: SubItem[] = [
+  { key: '/youtube/feeds', label: '订阅管理', icon: IconHome },
+  { key: '/youtube/subscriptions', label: '添加订阅', icon: IconPlus },
+]
+
+const instagramItems: SubItem[] = [
+  { key: '/instagram/feeds', label: '订阅管理', icon: IconHome },
+  { key: '/instagram/subscriptions', label: '添加订阅', icon: IconPlus },
+]
+
 // 任务监控二级菜单 (跨平台共用的任务/规则/日志)。
 // 集合了原 WeChat 子菜单的 导出记录/标签/消息任务/过滤规则/任务队列,
 // 以及原系统菜单的 Redfox 日志/飞书多维表。
@@ -124,6 +154,24 @@ const items = computed<SubItem[]>(() => {
   }
   if (route.path.startsWith('/xhs')) {
     return xhsItems
+  }
+  if (route.path.startsWith('/douyin')) {
+    return douyinItems
+  }
+  if (route.path.startsWith('/bilibili')) {
+    return bilibiliItems
+  }
+  if (route.path.startsWith('/x/')) {
+    return xItems
+  }
+  if (route.path.startsWith('/tiktok')) {
+    return tiktokItems
+  }
+  if (route.path.startsWith('/youtube')) {
+    return youtubeItems
+  }
+  if (route.path.startsWith('/instagram')) {
+    return instagramItems
   }
   return wechatItems
 })

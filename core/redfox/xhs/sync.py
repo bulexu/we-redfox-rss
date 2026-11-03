@@ -4,7 +4,7 @@
 ``do_job`` (公众号) 对称。  流程:
 
   1. 根据 ``feed.id`` 前缀识别 kind:
-     * ``XHS_KW_<keyword>``  → 走 ``iter_search_articles(keyword, sort_type='2')``
+     * ``XHS_KW_<keyword>``  → 走广域库 ``iter_search_articles(keyword, sort='最新')``
      * ``XHS_U_<userId>``    → 走 ``iter_user_works(user_id, sort_type='2')``
   2. 翻页直到 (a) ``publish_time <= feed.last_publish_time`` 早停,
      (b) 已抓 ``feed.max_fetch_count`` 条,  (c) ``hasMore=false``。
@@ -37,6 +37,7 @@ from core.print import print_error, print_info, print_warning
 
 from .client import (
     PAGE_SIZE,
+    SORT_LATEST,
     RedfoxError,
     iter_search_articles,
     iter_user_works,
@@ -51,8 +52,8 @@ AUTO_DISABLE_ERROR_THRESHOLD = 5
 XHS_KW_PREFIX = "XHS_KW_"
 XHS_U_PREFIX = "XHS_U_"
 
-# 关键词/账号订阅默认 sortType ("2" = 最新,  适合时间增量)
-DEFAULT_SORT_TYPE = "2"
+# 关键词订阅默认排序 ("最新",  适合时间增量;  账号订阅 SDK 仍用 "2")
+DEFAULT_SORT_TYPE = SORT_LATEST
 
 
 # ---------- feed id 解析 ----------
@@ -91,36 +92,62 @@ def build_feed_id(kind: str, target: str) -> str:
 
 # ---------- redfox note → Article 字段映射 ----------
 
+def _as_int(value: Any) -> int:
+    try:
+        return int(float(str(value or 0).replace(",", "")))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _first(note: Dict[str, Any], *keys: str) -> Any:
+    """按优先级取第一个非空字段,  兼容广域库与旧 SDK 两种字段风格。"""
+    for key in keys:
+        value = note.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _normalize_image_url(url: Any) -> str:
+    # Redfox 偶尔返回要求 CDN 输出 HEIF 的图片链接。Chrome/Edge 在 Windows
+    # 上通常无法直接渲染 HEIF，而小红书 CDN 接受相同链接输出 WebP。
+    return str(url or "").replace("format/heif", "format/webp")
+
+
 def _normalize_note(note: Dict[str, Any]) -> Dict[str, Any]:
     """把 redfox note dict 拆成 ``Article.__init__`` 可吃的 kwargs。
 
     只做字段映射 + 类型规范化,  不入库。  字段语义详见 ``do_job_xhs`` 顶部。
     """
-    work_id = (note.get("workId") or "").strip()
+    work_id = str(_first(note, "noteId", "workId") or "").strip()
     if not work_id:
         return {}
 
-    cover_url = note.get("coverUrl") or ""
-    # Redfox 偶尔返回要求 CDN 输出 HEIF 的封面链接。Chrome/Edge 在 Windows
-    # 上通常无法直接渲染 HEIF，而小红书 CDN 接受相同链接输出 WebP。
-    cover_url = cover_url.replace("format/heif", "format/webp")
-    image_urls_json = json.dumps([cover_url], ensure_ascii=False) if cover_url else "[]"
+    cover_url = _normalize_image_url(_first(note, "coverImage", "coverUrl"))
+    # 广域库返回 picUrls 全量图片; 旧 SDK 只有封面。
+    raw_pics = note.get("picUrls") if isinstance(note.get("picUrls"), list) else []
+    pic_urls = [_normalize_image_url(p) for p in raw_pics if p]
+    if not pic_urls and cover_url:
+        pic_urls = [cover_url]
+    image_urls_json = json.dumps(pic_urls, ensure_ascii=False) if pic_urls else "[]"
+
+    content = str(_first(note, "noteDesc", "workDesc") or "")
 
     return {
         "id": work_id,
-        "title": (note.get("workTitle") or "")[:1000],
-        "content": note.get("workDesc") or "",
-        "pic_url": cover_url if cover_url else None,
-        "url": note.get("workUrl") or "",
-        "publish_time": parse_work_publish_time(note.get("workPublishTime") or ""),
-        "author": (note.get("accountNickname") or "")[:255] or None,
-        "author_id": (note.get("accountUserid") or "")[:255] or None,
+        "title": (str(_first(note, "noteTitle", "workTitle") or ""))[:1000],
+        "content": content,
+        "pic_url": cover_url or None,
+        "url": str(_first(note, "noteUrl", "workUrl") or ""),
+        "publish_time": parse_work_publish_time(_first(note, "releaseTime", "workPublishTime") or ""),
+        "author": (str(_first(note, "authorName", "accountNickname") or ""))[:255] or None,
+        "author_id": (str(_first(note, "authorUid", "accountUserid") or ""))[:255] or None,
         "image_urls": image_urls_json,
-        "liked_count": int(note.get("workLikedCount") or 0),
-        "comments_count": int(note.get("workCommentsCount") or 0),
-        "collected_count": int(note.get("workCollectedCount") or 0),
-        "read_count": int(note.get("workReadedCount") or 0),
-        "share_count": int(note.get("workSharedCount") or 0),
+        "liked_count": _as_int(_first(note, "thumbCount", "workLikedCount")),
+        "comments_count": _as_int(_first(note, "replyCount", "workCommentsCount")),
+        "collected_count": _as_int(_first(note, "favoriteCount", "workCollectedCount")),
+        "read_count": _as_int(_first(note, "workReadedCount")),
+        "share_count": _as_int(_first(note, "forwardCount", "workSharedCount")),
     }
 
 
@@ -148,8 +175,7 @@ def _fetch_notes(
         raw_iter = iter_search_articles(
             keyword=target,
             max_pages=max_pages,
-            sort_type=DEFAULT_SORT_TYPE,
-            page_size=PAGE_SIZE,
+            sort=DEFAULT_SORT_TYPE,
         )
     elif kind == "account":
         raw_iter = iter_user_works(
@@ -222,7 +248,7 @@ def _upsert_articles(session, feed_id: str, normalized_notes: List[Dict[str, Any
                 read_count=n.get("read_count") or 0,
                 share_count=n.get("share_count") or 0,
                 status=1,
-                has_content=1,  # XHS 一次抓回 workDesc 全文,  标记为有正文
+                has_content=1 if (n.get("content") or "").strip() else 0,
                 created_at=now_dt,
                 updated_at=now_ms,
                 updated_at_millis=now_ms,

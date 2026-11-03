@@ -281,15 +281,17 @@ def test_do_job_xhs_watermark() -> bool:
         feed = _build_xhs_test_feed(session, feed_id)
 
         # 准备 3 条新 note (降序,  最新在最前)
+        # workId 带上本次运行的 feed 后缀,  避免历史残留数据被当成"已存在"而只走 metrics 更新。
         from datetime import datetime as _dt
-        notes = _make_fake_notes("wm", 3, _dt(2024, 6, 1, 12, 0, 0))
+        prefix = f"wm_{feed_id[-8:]}"
+        notes = _make_fake_notes(prefix, 3, _dt(2024, 6, 1, 12, 0, 0))
         # iter_search_articles 要求降序
         notes.reverse()  # 最新的在前: 12:02, 12:01, 12:00
 
         # monkey-patch
         original_iter = sync_mod.iter_search_articles
 
-        def fake_iter(keyword, max_pages=5, sort_type="2", page_size=20):
+        def fake_iter(keyword, max_pages=5, sort="最新", **kwargs):
             yield from notes
 
         sync_mod.iter_search_articles = fake_iter
@@ -299,7 +301,12 @@ def test_do_job_xhs_watermark() -> bool:
             sync_mod.iter_search_articles = original_iter
 
         # 检查: 3 条入库,  watermark = 最新一条的 publish_time
-        rows = session.query(Article).filter(Article.feed_id == feed_id).all()
+        # do_job_xhs 已关闭它自己的 session,  这里重新取一个再查。
+        session_rows = DB.get_session()
+        try:
+            rows = session_rows.query(Article).filter(Article.feed_id == feed_id).all()
+        finally:
+            session_rows.close()
         assert len(rows) == 3, f"应 3 条,  实际 {len(rows)}"
         latest_pt = max(a.publish_time for a in rows)
 
@@ -313,7 +320,7 @@ def test_do_job_xhs_watermark() -> bool:
             )
             assert db_feed.error_count == 0
             assert db_feed.last_error is None
-            assert db_feed.last_cursor == "wm_2"  # 最新一条 workId
+            assert db_feed.last_cursor == f"{prefix}_2"  # 最新一条 workId
         finally:
             session2.close()
         print("  ✓ do_job_xhs watermark 推进 + 错误清零")

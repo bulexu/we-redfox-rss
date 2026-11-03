@@ -1,9 +1,9 @@
 """小红书 (XHS) redfox 接口薄封装。
 
-对应 redfox SDK ``client.xiaohongshu.*`` 命名空间:
-  * ``search_articles(keyword, offset, sort_type)`` —— 关键词搜索笔记
-  * ``search_users(keyword, offset)``             —— 关键词搜索用户
-  * ``get_user_works(user_id, offset, sort_type)`` —— 单用户作品列表
+对应 redfox 接口:
+  * ``search_articles(keyword, page, sort)``        —— 广域库关键词搜索笔记
+  * ``search_users(keyword, offset)``               —— 关键词搜索用户 (SDK)
+  * ``get_user_works(user_id, offset, sort_type)``  —— 单用户作品列表 (SDK)
 
 业务方法挂在 ``XhsClient`` (继承 ``RedfoxClient``) 上;  SDK 初始化 /
 调用日志 / 异常归一 / 线程缓存都来自 ``core.redfox.base`` 共性层。
@@ -23,6 +23,7 @@ from ..base import (
     RedfoxClient,
     RedfoxError,
     _get_client_for,
+    is_enterprise_account,
 )
 
 
@@ -30,9 +31,21 @@ from ..base import (
 # 模块级常量 (XHS 平台路径)
 # ---------------------------------------------------------------------------
 
-SEARCH_ARTICLES_PATH = "/story/api/xhsUser/searchArticle"
+SEARCH_ARTICLES_PATH = "/story/api/xhs/ability/searchWork"          # 广域库 (企业账号)
+SEARCH_ARTICLES_PATH_LEGACY = "/story/api/xhsUser/searchArticle"    # 旧接口 (非企业账号)
 SEARCH_USERS_PATH = "/story/api/xhsUser/searchUser"
 GET_USER_WORKS_PATH = "/story/api/xhsUser/getUserWorks"
+
+# 广域库搜索过滤条件 (接口要求显式传值)
+NOTE_TYPE_ANY = "不限"
+NOTE_TIME_ANY = "不限"
+SORT_DEFAULT = "综合"
+SORT_LATEST = "最新"
+VALID_NOTE_TYPES = {"不限", "视频笔记", "普通笔记"}
+VALID_NOTE_TIMES = {"不限", "一天内", "一周内", "一年内"}
+VALID_SORTS = {"综合", "最新", "最多点赞", "最多评论", "最多收藏"}
+# 旧接口 sortType: "0"=综合, "2"=最新, "4"=最热
+SORT_TO_LEGACY = {"综合": "0", "最新": "2", "最多点赞": "4", "最多评论": "4", "最多收藏": "4"}
 
 
 # ---------------------------------------------------------------------------
@@ -52,35 +65,64 @@ class XhsClient(RedfoxClient):
     def search_articles(
         self,
         keyword: str = "",
-        offset: int = 0,
-        sort_type: str = "0",
+        page: int = 1,
+        sort: str = SORT_DEFAULT,
+        note_type: str = NOTE_TYPE_ANY,
+        note_time: str = NOTE_TIME_ANY,
     ) -> Dict[str, Any]:
-        """按关键词搜索小红书笔记。
+        """按关键词搜索小红书笔记 (广域库实时接口)。
 
         Args:
-            keyword:  搜索关键词
-            offset:   分页偏移,  每页 +20
-            sort_type: "0"=默认(相关), "2"=最新(增量用), "4"=最热
+            keyword:   搜索关键词
+            page:      页码,  从 1 开始
+            sort:      "综合" / "最新" / "最多点赞" / "最多评论" / "最多收藏"
+            note_type: "不限" / "视频笔记" / "普通笔记"
+            note_time: "不限" / "一天内" / "一周内" / "一年内"
         """
         kw = (keyword or "").strip()
         if not kw:
             raise RedfoxError("search_articles: keyword 不能为空")
         try:
-            offset = max(0, int(offset))
+            page = max(1, int(page or 1))
         except (TypeError, ValueError):
-            offset = 0
+            page = 1
+        if sort not in VALID_SORTS:
+            raise RedfoxError(f"search_articles: 不支持的排序方式 {sort!r}")
+        if note_type not in VALID_NOTE_TYPES:
+            raise RedfoxError(f"search_articles: 不支持的笔记类型 {note_type!r}")
+        if note_time not in VALID_NOTE_TIMES:
+            raise RedfoxError(f"search_articles: 不支持的时间范围 {note_time!r}")
 
+        if is_enterprise_account():
+            payload = {
+                "keyword": kw,
+                "page": page,
+                "sort": sort,
+                "note_type": note_type,
+                "noteTime": note_time,
+            }
+            return self._sdk_call(
+                endpoint=SEARCH_ARTICLES_PATH,
+                request_payload=payload,
+                # SDK 便捷方法未覆盖该搜索接口，直接通过 SDK 底层 post 发送；
+                # 鉴权、重试和响应解包仍由官方 SDK 负责。
+                sdk_op=lambda: self._sdk.post(SEARCH_ARTICLES_PATH, data=payload),
+            )
+
+        # 非企业账号不支持广域库接口，回落到旧接口 (offset 分页)。
+        offset = (page - 1) * PAGE_SIZE
+        sort_type = SORT_TO_LEGACY.get(sort, "0")
         return self._sdk_call(
-            endpoint=SEARCH_ARTICLES_PATH,
+            endpoint=SEARCH_ARTICLES_PATH_LEGACY,
             request_payload={
                 "keyword": kw,
                 "offset": offset,
-                "sortType": str(sort_type),
+                "sortType": sort_type,
             },
             sdk_op=lambda: self._sdk.xiaohongshu.search_articles(
                 keyword=kw,
                 offset=offset,
-                sort_type=str(sort_type),
+                sort_type=sort_type,
             ),
         )
 
@@ -88,29 +130,33 @@ class XhsClient(RedfoxClient):
         self,
         keyword: str = "",
         max_pages: int = 5,
-        sort_type: str = "2",
-        page_size: int = PAGE_SIZE,
+        sort: str = SORT_LATEST,
+        note_type: str = NOTE_TYPE_ANY,
+        note_time: str = NOTE_TIME_ANY,
     ) -> Iterable[Dict[str, Any]]:
         """按页迭代关键词搜索结果。
 
         用于增量抓取时按页翻直到 ``publish_time <= last_publish_time``
         或达到 ``max_pages`` / ``max_count`` 上限。
         """
-        if page_size <= 0:
-            page_size = PAGE_SIZE
-        for page in range(max(1, int(max_pages))):
+        for page in range(1, max(1, int(max_pages)) + 1):
             data = self.search_articles(
                 keyword=keyword,
-                offset=page * page_size,
-                sort_type=sort_type,
-            )
-            # redfox 优质库返回 ``list`` 字段 (SDK 已解包 data,  老版本曾用 ``notes``)
-            notes = data.get("list") or data.get("notes") or []
-            if not notes:
+                page=page,
+                sort=sort,
+                note_type=note_type,
+                note_time=note_time,
+            ) or {}
+            # 广域库返回 workList；旧接口返回 list/notes。
+            notes = data.get("workList") or data.get("list") or data.get("notes") or []
+            if not isinstance(notes, list) or not notes:
                 return
-            yield from notes
+            for note in notes:
+                if isinstance(note, dict):
+                    yield note
             has_more = data.get("hasMore")
-            if has_more is False or has_more == 0:
+            # 广域库未返回 hasMore；以不足一页判断结束 (单页固定 20 条)。
+            if len(notes) < PAGE_SIZE or has_more is False or has_more == 0:
                 return
 
     def search_users(
@@ -206,25 +252,30 @@ def _get_default_client() -> XhsClient:
 
 def search_articles(
     keyword: str = "",
-    offset: int = 0,
-    sort_type: str = "0",
+    page: int = 1,
+    sort: str = SORT_DEFAULT,
+    note_type: str = NOTE_TYPE_ANY,
+    note_time: str = NOTE_TIME_ANY,
 ) -> Dict[str, Any]:
     return _get_default_client().search_articles(
-        keyword=keyword, offset=offset, sort_type=sort_type,
+        keyword=keyword, page=page, sort=sort,
+        note_type=note_type, note_time=note_time,
     )
 
 
 def iter_search_articles(
     keyword: str = "",
     max_pages: int = 5,
-    sort_type: str = "2",
-    page_size: int = PAGE_SIZE,
+    sort: str = SORT_LATEST,
+    note_type: str = NOTE_TYPE_ANY,
+    note_time: str = NOTE_TIME_ANY,
 ) -> Iterable[Dict[str, Any]]:
     return _get_default_client().iter_search_articles(
         keyword=keyword,
         max_pages=max_pages,
-        sort_type=sort_type,
-        page_size=page_size,
+        sort=sort,
+        note_type=note_type,
+        note_time=note_time,
     )
 
 
@@ -260,19 +311,27 @@ def iter_user_works(
 # 解析工具: workPublishTime ("YYYY-MM-DD HH:MM:SS") → epoch 秒
 # ---------------------------------------------------------------------------
 
-def parse_work_publish_time(text: str) -> int:
-    """redfox workPublishTime → epoch 秒。
+def parse_work_publish_time(value: Any) -> int:
+    """redfox releaseTime / workPublishTime → epoch 秒。
 
-    输入格式 ``"2025-07-21 17:09:42"``。  解析失败返回 0。
+    兼容三种形式:  ``"2025-07-21 17:09:42"`` 日期字符串、
+    秒/毫秒时间戳 (广域库 ``releaseTime`` 实际返回整数秒)。
+    解析失败返回 0。
 
     注意:  与 LarkBitable.last_pushed_at 不同,  Article.publish_time
     在本仓库内统一使用 ``Integer`` epoch **秒**,  见 ``core/models/article.py``。
     """
-    if not text:
+    if value in (None, ""):
         return 0
-    s = str(text).strip()
+    if isinstance(value, (int, float)):
+        number = int(value)
+        return number // 1000 if number > 10_000_000_000 else number
+    s = str(value).strip()
     if not s:
         return 0
+    if s.isdigit():
+        number = int(s)
+        return number // 1000 if number > 10_000_000_000 else number
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
         try:
             dt = datetime.strptime(s, fmt)
@@ -293,8 +352,17 @@ __all__ = [
     "parse_work_publish_time",
     # 路径常量
     "SEARCH_ARTICLES_PATH",
+    "SEARCH_ARTICLES_PATH_LEGACY",
     "SEARCH_USERS_PATH",
     "GET_USER_WORKS_PATH",
+    # 搜索过滤条件
+    "NOTE_TYPE_ANY",
+    "NOTE_TIME_ANY",
+    "SORT_DEFAULT",
+    "SORT_LATEST",
+    "VALID_NOTE_TYPES",
+    "VALID_NOTE_TIMES",
+    "VALID_SORTS",
     # 共用常量 (供旧 import 兼容)
     "PAGE_SIZE",
 ]

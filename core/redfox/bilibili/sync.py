@@ -1,7 +1,9 @@
 """哔哩哔哩关键词订阅同步。"""
 from __future__ import annotations
 
+import html
 import json
+import re
 import time
 import uuid
 from datetime import datetime
@@ -12,7 +14,7 @@ from core.models.article import Article
 from core.models.feed import Feed
 from core.print import print_info, print_warning
 
-from .client import PAGE_SIZE, iter_search_works, parse_publish_time
+from .client import ORDER_LATEST, PAGE_SIZE, iter_search_works, parse_publish_time
 
 AUTO_DISABLE_ERROR_THRESHOLD = 5
 BILI_KW_PREFIX = "BILI_KW_"
@@ -31,40 +33,65 @@ def _as_int(value: Any) -> int:
         return 0
 
 
+def _clean_text(value: Any) -> str:
+    """去掉广域库标题里的高亮标签 (如 ``<em class="keyword">``) 并反转义。"""
+    text = html.unescape(str(value or ""))
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
+def _normalize_tags(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return []
+
+
+def _normalize_cover(value: Any) -> str:
+    pic_url = str(value or "").strip()
+    if pic_url.startswith("//"):
+        return "https:" + pic_url
+    if pic_url.startswith("http://"):
+        return "https://" + pic_url[len("http://"):]
+    return pic_url
+
+
 def _normalize_work(work: Dict[str, Any]) -> Dict[str, Any]:
     bvid = str(work.get("bvId") or work.get("bvid") or work.get("id") or "").strip()
     if not bvid:
         return {}
-    title = str(work.get("title") or "").strip()
-    description = str(work.get("description") or "").strip()
-    pic_url = str(work.get("picUrl") or work.get("coverUrl") or "").strip()
-    if pic_url.startswith("http://"):
-        pic_url = "https://" + pic_url[len("http://"):]
-    tags = work.get("tagNames") if isinstance(work.get("tagNames"), list) else []
-    url = str(work.get("workUrl") or f"https://www.bilibili.com/video/{bvid}")
+    title = _clean_text(work.get("title"))
+    description = _clean_text(work.get("description"))
+    pic_url = _normalize_cover(work.get("cover") or work.get("picUrl") or work.get("coverUrl"))
+    tags = _normalize_tags(work.get("tags") if work.get("tags") is not None else work.get("tagNames"))
+    url = str(work.get("url") or work.get("workUrl") or f"https://www.bilibili.com/video/{bvid}")
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://"):]
     extinfo = {
         "platform": "bili", "bvid": bvid,
+        "av_id": work.get("avId") or 0,
         "duration": _as_int(work.get("duration")),
-        "coin_count": _as_int(work.get("coinCount")),
-        "interaction_quantity": _as_int(work.get("interactionQuantity")),
-        "first_type": work.get("firstType") or "",
-        "second_type": work.get("secondType") or "",
+        "category_id": str(work.get("categoryId") or ""),
+        "category_name": str(work.get("categoryName") or ""),
+        "type": str(work.get("type") or ""),
+        "danmaku_count": _as_int(work.get("danmakuCount")),
+        "total_danmaku_count": _as_int(work.get("totalDanmakuCount")),
         "tags": tags,
-        "video_review": _as_int(work.get("videoReview")),
+        "author_avatar": _normalize_cover(work.get("avatar")),
     }
     return {
         "id": bvid, "title": title[:1000], "content": description,
         "description": description, "pic_url": pic_url[:500] or None,
         "url": url[:500],
-        "publish_time": parse_publish_time(work.get("created") or work.get("publishTime")),
-        "author": str(work.get("author") or "")[:255] or None,
+        "publish_time": parse_publish_time(work.get("publishTime") or work.get("created")),
+        "author": str(work.get("nickname") or work.get("author") or "")[:255] or None,
         "author_id": str(work.get("authorId") or "")[:255] or None,
         "image_urls": json.dumps([pic_url], ensure_ascii=False) if pic_url else "[]",
         "extinfo": json.dumps(extinfo, ensure_ascii=False),
-        "liked_count": _as_int(work.get("likeCount")),
-        "comments_count": _as_int(work.get("commentCount")),
-        "collected_count": _as_int(work.get("favoriteCount")),
-        "read_count": _as_int(work.get("playCount")),
+        "liked_count": _as_int(work.get("likeNum") if work.get("likeNum") is not None else work.get("likeCount")),
+        "comments_count": _as_int(work.get("commentNum") if work.get("commentNum") is not None else work.get("commentCount")),
+        "collected_count": _as_int(work.get("collectNum") if work.get("collectNum") is not None else work.get("favoriteCount")),
+        "read_count": _as_int(work.get("viewNum") if work.get("viewNum") is not None else work.get("playCount")),
         "share_count": _as_int(work.get("shareCount")),
     }
 
@@ -72,7 +99,7 @@ def _normalize_work(work: Dict[str, Any]) -> Dict[str, Any]:
 def _fetch_works(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:
     max_pages = max(1, (max_count + PAGE_SIZE - 1) // PAGE_SIZE)
     results: List[Dict[str, Any]] = []
-    for raw in iter_search_works(target, max_pages=max_pages, page_size=PAGE_SIZE, order="time"):
+    for raw in iter_search_works(target, max_pages=max_pages, order=ORDER_LATEST):
         work = _normalize_work(raw)
         if not work:
             continue

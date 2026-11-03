@@ -67,6 +67,27 @@ SUCCESS_CODE = 2000
 PAGE_SIZE = 20  # redfox 广域库 / 小红书 单页固定 20
 
 
+def is_enterprise_account() -> bool:
+    """是否为 Redfox 企业账号。
+
+    广域库新接口 (B 站 ``/story/api/bili/search``、小红书
+    ``/story/api/xhs/ability/searchWork``) 仅企业账号可调用。
+
+    优先读 ``config.yaml`` 的 ``redfox.enterprise``,  缺省回落到环境变量
+    ``REDFOX_ENTERPRISE`` (默认 False)。
+    """
+    value: Any = None
+    try:
+        value = cfg.get("redfox.enterprise", None) if cfg else None
+    except Exception:
+        value = None
+    if value is None:
+        value = os.getenv("REDFOX_ENTERPRISE", "")
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 # ---------------------------------------------------------------------------
 # 基础客户端类
 # ---------------------------------------------------------------------------
@@ -356,4 +377,5 @@ __all__ = [
     "PAGE_SIZE",
     "_get_client_for",
     "close_all_clients",
+    "is_enterprise_account",
 ]

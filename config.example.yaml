@@ -151,6 +151,8 @@ redfox:
   base_url: ${REDFOX_BASE_URL:-https://redfox.hk}
   # 请求超时（秒）
   timeout: ${REDFOX_TIMEOUT:-15}
+  # 是否企业账号；为 True 时 B 站/小红书关键词搜索走广域库新接口
+  enterprise: ${REDFOX_ENTERPRISE:-False}
 
 # 飞书多维表（Lark Bitable）推送配置
 # 用于在公众号文章完成正文抓取时，把内容推送到指定 Bitable 多维表归档

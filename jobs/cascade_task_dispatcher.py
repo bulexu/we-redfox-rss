@@ -351,13 +351,13 @@ class CascadeTaskDispatcher:
         # 获取任务关联的公众号
         session = DB.get_session()
         try:
-            mps_list = json.loads(task.mps_id) if task.mps_id else []
-            feed_ids = [mp["id"] for mp in mps_list]
-
-            feeds = session.query(Feed).filter(Feed.id.in_(feed_ids)).all()
+            # 与本机统一调度使用同一套范围解析，支持全部/按平台/自定义。
+            from jobs.mps import resolve_task_feeds
+            grouped = resolve_task_feeds(task)
+            feeds = [feed for platform_feeds in grouped.values() for feed in platform_feeds]
 
             if not feeds:
-                print_warning(f"任务 {task.name} 没有关联公众号")
+                print_warning(f"任务 {task.name} 的抓取范围内没有启用订阅")
                 return False
 
             print_info(f"任务 {task.name} 包含 {len(feeds)} 个公众号")
@@ -417,9 +417,9 @@ class CascadeTaskDispatcher:
                 {
                     "id": feed.id,
                     "faker_id": feed.faker_id,
-                    "mp_name": feed.mp_name,
-                    "mp_cover": feed.mp_cover,
-                    "mp_intro": feed.mp_intro,
+                    "name": feed.name,
+                    "cover": feed.cover,
+                    "intro": feed.intro,
                     "status": feed.status
                 }
                 for feed in feeds
@@ -834,9 +834,9 @@ async def execute_parent_task(task_package: dict):
                 feed = Feed(
                     id=feed_data["id"],
                     faker_id=feed_data.get("faker_id"),
-                    mp_name=feed_data["mp_name"],
-                    mp_cover=feed_data["mp_cover"],
-                    mp_intro=feed_data["mp_intro"],
+                    name=feed_data["name"],
+                    cover=feed_data["cover"],
+                    intro=feed_data["intro"],
                     status=feed_data["status"],
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow()
@@ -867,7 +867,7 @@ async def execute_parent_task(task_package: dict):
         
         for feed in feeds_list:
             try:
-                print_info(f"处理公众号: {feed.mp_name}")
+                print_info(f"处理公众号: {feed.name}")
                 
                 # 执行抓取
                 from core.wx import WxGather
@@ -879,11 +879,11 @@ async def execute_parent_task(task_package: dict):
                         feed.faker_id,
                         CallBack=UpdateArticle,
                         Mps_id=feed.id,
-                        Mps_title=feed.mp_name,
+                        Mps_title=feed.name,
                         MaxPage=1
                     )
                 except Exception as e:
-                    print_error(f"抓取失败 {feed.mp_name}: {str(e)}")
+                    print_error(f"抓取失败 {feed.name}: {str(e)}")
                 
                 articles = wx.articles if hasattr(wx, 'articles') else []
                 count = len(articles)
@@ -891,17 +891,17 @@ async def execute_parent_task(task_package: dict):
                 all_articles.extend(articles)
                 
                 results.append({
-                    "mp_id": feed.id,
-                    "mp_name": feed.mp_name,
+                    "id": feed.id,
+                    "name": feed.name,
                     "status": "success",
                     "article_count": count
                 })
                 
             except Exception as e:
-                print_error(f"处理公众号失败 {feed.mp_name}: {str(e)}")
+                print_error(f"处理公众号失败 {feed.name}: {str(e)}")
                 results.append({
-                    "mp_id": feed.id,
-                    "mp_name": feed.mp_name,
+                    "id": feed.id,
+                    "name": feed.name,
                     "status": "failed",
                     "error": str(e)
                 })

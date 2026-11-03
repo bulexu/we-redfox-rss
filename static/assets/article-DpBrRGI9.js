@@ -1,0 +1,1 @@
+import{y as e}from"./http-BZILK-92.js";export{e as getArticles};

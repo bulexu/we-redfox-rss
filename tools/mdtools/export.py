@@ -189,7 +189,7 @@ def process_articles(session, mp_id=None,doc_id=None, page_size=10, page_count=1
             
         query = session.query(Article).filter(Article.content != None).where(Article.status == 1)
         if mp_id:
-            query = query.where(Article.mp_id.in_(mp_id.split(",")))
+            query = query.where(Article.feed_id.in_(mp_id.split(",")))
         if doc_id:
             query = query.where(Article.id.in_(doc_id))
             is_break=True   

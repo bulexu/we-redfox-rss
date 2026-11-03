@@ -33,8 +33,8 @@
 - **外挂人工兜底**（独立于系统降级）：
   - Tier 3：[八爪鱼 RPA](https://rpa.bazhuayu.com/shareableLink/6aa1062894a41f8dcd647ff3) 客户端，需在八爪鱼单独配置
   - 系统会暴露两个 AK 端点供 RPA 回写正文：
-    - `GET /api/v1/wx/articles/pending-content`
-    - `POST /api/v1/wx/articles/{article_id}/content`
+    - `GET /api/v1/articles/pending-content`
+    - `POST /api/v1/articles/{article_id}/content`
 
 ### 3️⃣ 飞书多维表自动归档
 

@@ -1,1 +1,1 @@
-API_VERSION="/api/v1/wx"
+API_VERSION="/api/v1"

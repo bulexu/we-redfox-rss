@@ -349,13 +349,13 @@ class CascadeClient:
     async def pull_feeds(self) -> List[dict]:
         """从父节点拉取公众号数据"""
         print_info("从父节点拉取公众号数据...")
-        result = await self._request("GET", "/api/v1/wx/cascade/feeds")
+        result = await self._request("GET", "/api/v1/cascade/feeds")
         return result.get("data", [])
     
     async def pull_message_tasks(self) -> List[dict]:
         """从父节点拉取消息任务"""
         print_info("从父节点拉取消息任务...")
-        result = await self._request("GET", "/api/v1/wx/cascade/message-tasks")
+        result = await self._request("GET", "/api/v1/cascade/message-tasks")
         return result.get("data", [])
     
     async def report_task_result(
@@ -378,7 +378,7 @@ class CascadeClient:
             "results": results,
             "timestamp": datetime.utcnow().isoformat()
         }
-        result = await self._request("POST", "/api/v1/wx/cascade/report-result", data=data)
+        result = await self._request("POST", "/api/v1/cascade/report-result", data=data)
         return result
     
     async def send_heartbeat(self, callback_url: str = None) -> dict:
@@ -392,7 +392,7 @@ class CascadeClient:
             data = {}
             if callback_url:
                 data["callback_url"] = callback_url
-            result = await self._request("POST", "/api/v1/wx/cascade/heartbeat", data=data if data else None)
+            result = await self._request("POST", "/api/v1/cascade/heartbeat", data=data if data else None)
             print_info("心跳发送成功")
             return result
         except Exception as e:
@@ -410,7 +410,7 @@ class CascadeClient:
             任务包字典，无任务则返回None
         """
         try:
-            result = await self._request("GET", "/api/v1/wx/cascade/pending-tasks", params={"limit": limit})
+            result = await self._request("GET", "/api/v1/cascade/pending-tasks", params={"limit": limit})
             data = result.get("data")
             # 确保返回有效的任务包（包含task_id）或None
             if data and isinstance(data, dict) and "task_id" in data:
@@ -428,7 +428,7 @@ class CascadeClient:
             任务包字典，无任务则返回None
         """
         try:
-            result = await self._request("POST", "/api/v1/wx/cascade/claim-task")
+            result = await self._request("POST", "/api/v1/cascade/claim-task")
             data = result.get("data")
             if data and isinstance(data, dict) and "allocation_id" in data:
                 return data
@@ -460,7 +460,7 @@ class CascadeClient:
             "error_message": error_message,
             "timestamp": datetime.utcnow().isoformat()
         }
-        result = await self._request("PUT", "/api/v1/wx/cascade/task-status", data=data)
+        result = await self._request("PUT", "/api/v1/cascade/task-status", data=data)
         return result
 
     async def upload_articles(
@@ -483,7 +483,7 @@ class CascadeClient:
             "articles": articles,
             "timestamp": datetime.utcnow().isoformat()
         }
-        result = await self._request("POST", "/api/v1/wx/cascade/upload-articles", data=data)
+        result = await self._request("POST", "/api/v1/cascade/upload-articles", data=data)
         return result
 
     async def report_task_completion(
@@ -512,7 +512,7 @@ class CascadeClient:
             "article_count": article_count,
             "timestamp": datetime.utcnow().isoformat()
         }
-        result = await self._request("POST", "/api/v1/wx/cascade/report-completion", data=data)
+        result = await self._request("POST", "/api/v1/cascade/report-completion", data=data)
         return result
 
 

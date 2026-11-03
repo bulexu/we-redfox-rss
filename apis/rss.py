@@ -88,10 +88,10 @@ async def get_rss_feeds(
         cst = timezone(timedelta(hours=8))
         rss_list = [{
             "id": str(feed.id),
-            "title": feed.mp_name,
+            "title": feed.name,
             "link":  f"{rss_domain}rss/{feed.id}",
-            "description": feed.mp_intro,
-            "image": feed.mp_cover,
+            "description": feed.intro,
+            "image": feed.cover,
             "updated": (feed.created_at if getattr(feed.created_at, 'tzinfo', None) is not None else feed.created_at.replace(tzinfo=cst)).isoformat()
         } for feed in feeds]
         
@@ -151,7 +151,7 @@ async def get_rss_feed(content_id: str):
     </html>
     '''
     text=rss.add_logo_prefix_to_urls(content['content'])
-    html=html.format(title=title,text=text,source=content['mp_name'],publish_time=content['publish_time'])
+    html=html.format(title=title,text=text,source=content['name'],publish_time=content['publish_time'])
     return Response(
             content=html,
             media_type="text/html"
@@ -210,7 +210,7 @@ async def get_mp_articles_source(
         from core.models.tags import Tags
         # 查询公众号信息
         feed = session.query(Feed)
-        query=session.query(Feed, Article).join(Article, Feed.id == Article.mp_id)
+        query=session.query(Feed, Article).join(Article, Feed.id == Article.feed_id)
         rss_domain = str(cfg.get("rss.base_url", str(request.base_url))).rstrip("/") + "/"
         if tag_id is not None:
             feed_link = f"{rss_domain}feed/tag/{tag_id}.{ext}"
@@ -222,21 +222,21 @@ async def get_mp_articles_source(
             feed_link = f"{rss_domain}feed/{target_feed_id}.{ext}"
         if feed_id not in ["all",None]:
             feed=feed.filter(Feed.id == feed_id).first()
-            query=query.filter(Article.mp_id==feed_id)
+            query=query.filter(Article.feed_id==feed_id)
         else:
             feed=Feed()
-            feed.mp_name=cfg.get("rss.title","WeRss") or "WeRss"
-            feed.mp_intro=cfg.get("rss.description") or "WeRss高效订阅我的公众号"
-            feed.mp_cover=cfg.get("rss.cover") or f"{rss_domain}static/logo.svg"
+            feed.name=cfg.get("rss.title","WeRss") or "WeRss"
+            feed.intro=cfg.get("rss.description") or "WeRss高效订阅我的公众号"
+            feed.cover=cfg.get("rss.cover") or f"{rss_domain}static/logo.svg"
             #如果传入了tag_id就加载tag对应的订阅信息
             if tag_id is not None:
                 tags=session.query(Tags).filter(Tags.id == tag_id).first()
                 if tags:
-                    mps_ids = [str(mp['id']) for mp in json.loads(tags.mps_id)] if tags.mps_id else []
-                    query=query.filter(Feed.id.in_(mps_ids))
-                    feed.mp_name = tags.name
-                    feed.mp_intro = tags.intro
-                    feed.mp_cover = f'{rss_domain}{tags.cover}'
+                    feed_ids = [str(mp['id']) for mp in json.loads(tags.feed_ids)] if tags.feed_ids else []
+                    query=query.filter(Feed.id.in_(feed_ids))
+                    feed.name = tags.name
+                    feed.intro = tags.intro
+                    feed.cover = f'{rss_domain}{tags.cover}'
 
         
         if not feed:
@@ -264,16 +264,16 @@ async def get_mp_articles_source(
             "description": article.description if article.description != "" else article.title or "",
             "content": article.content or "",
             "image": article.pic_url or "",
-            "mp_name":_feed.mp_name or "",
+            "name":_feed.name or "",
             "updated": datetime.fromtimestamp(article.publish_time, tz=cst),
             "feed": {
                     "id":_feed.id,
-                    "name":_feed.mp_name,
-                    "cover":_feed.mp_cover,
-                    "intro":_feed.mp_intro
+                    "name":_feed.name,
+                    "cover":_feed.cover,
+                    "intro":_feed.intro
             }
         } for _feed,article in articles]
-        
+
 
         # 缓存文章内容
         for _feed,article in articles:
@@ -282,13 +282,13 @@ async def get_mp_articles_source(
                 "title": article.title,
                 "content": article.content,
                 "publish_time": article.publish_time,
-                "mp_id": article.mp_id,
+                "feed_id": article.feed_id,
                 "pic_url": article.pic_url,
-                "mp_name": _feed.mp_name
+                "name": _feed.name
             }
             rss.cache_content(article.id, content_data)
         # 生成RSS XML
-        rss_xml = rss.generate(rss_list,ext=ext, title=f"{feed.mp_name}",link=feed_link,description=feed.mp_intro,image_url=feed.mp_cover,template=template)
+        rss_xml = rss.generate(rss_list,ext=ext, title=f"{feed.name}",link=feed_link,description=feed.intro,image_url=feed.cover,template=template)
         
         return Response(
             content=rss_xml,
@@ -343,5 +343,138 @@ async def rss(
     is_update:bool=True
 ):
     return await get_mp_articles_source(request=request,feed_id=feed_id, tag_id=tag_id,limit=limit,offset=offset, is_update=is_update,ext=ext,kw=kw,content_type=content_type)
+
+
+# ===== 小红书 (XHS) 专用 RSS =====
+# 区别于公众号:
+#   * description 用 workDesc 前 200 字 (公众号无 workDesc, 走 title 回退)
+#   * content 始终保留 workDesc 全文,  RSS reader 里可读完整笔记正文
+#   * 不嵌入视频/多图 (按 Q13 设计: 后续多图再加)
+#   * 缓存 key 与公众号隔离, 防止互相覆盖
+
+XHS_DESC_MAX_CHARS = 200
+
+
+@router.get("/xhs/{feed_id}", summary="获取 XHS feed 的 RSS")
+async def get_xhs_feed_rss(
+    request: Request,
+    feed_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    if not (feed_id.startswith("XHS_KW_") or feed_id.startswith("XHS_U_")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_response(
+                code=40001,
+                message="非 XHS feed_id",
+            ),
+        )
+
+    limit = clamp_rss_limit(limit)
+    rss = RSS(name=f"xhs_{feed_id}_{limit}_{offset}")
+    rss_xml = rss.get_cache()
+    if rss_xml is not None:
+        return Response(content=rss_xml, media_type=rss.get_type())
+
+    session = DB.get_session()
+    try:
+        from core.models.article import Article
+        feed = session.query(Feed).filter(Feed.id == feed_id).first()
+        if not feed:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_response(code=40403, message="XHS 订阅不存在"),
+            )
+
+        rss_domain = str(cfg.get("rss.base_url", str(request.base_url))).rstrip("/") + "/"
+        feed_link = f"{rss_domain}feed/xhs/{feed_id}.rss"
+
+        rows = (
+            session.query(Article)
+            .filter(Article.feed_id == feed_id)
+            .order_by(Article.publish_time.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+        from datetime import datetime, timezone, timedelta
+        cst = timezone(timedelta(hours=8))
+
+        def _truncate(text: str, n: int = XHS_DESC_MAX_CHARS) -> str:
+            if not text:
+                return ""
+            text = text.strip()
+            return text if len(text) <= n else text[: n - 1] + "…"
+
+        rss_list = [{
+            "id": str(a.id),
+            "title": a.title or "",
+            "link": a.url or f"{rss_domain}views/article/{a.id}",
+            "description": _truncate(a.content or a.title or ""),
+            "content": a.content or "",
+            "image": a.pic_url or "",
+            "name": feed.name or "",
+            "updated": datetime.fromtimestamp(a.publish_time or 0, tz=cst),
+            "feed": {
+                "id": feed.id,
+                "name": feed.name,
+                "cover": feed.cover,
+                "intro": feed.intro,
+            },
+        } for a in rows]
+
+        # 内容缓存 (用于 /rss/content/{id} 详情页)
+        for a in rows:
+            rss.cache_content(a.id, {
+                "id": a.id,
+                "title": a.title,
+                "content": a.content,
+                "publish_time": a.publish_time,
+                "feed_id": a.feed_id,
+                "pic_url": a.pic_url,
+                "name": feed.name,
+            })
+
+        rss_xml = rss.generate_rss(
+            rss_list,
+            title=f"XHS: {feed.name}",
+            link=feed_link,
+            description=feed.intro or "",
+            image_url=feed.cover or "",
+        )
+        return Response(content=rss_xml, media_type=rss.get_type())
+    except HTTPException:
+        raise
+    except Exception as e:
+        print_error(f"获取 XHS RSS 错误:{e}")
+        if rss_xml is not None:
+            return Response(content=rss_xml, media_type=rss.get_type())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_response(code=50002, message="获取 XHS RSS 失败"),
+        )
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
+
+
+@feed_router.get("/xhs/{feed_id}.{ext}", summary="XHS RSS (feed_router 别名)")
+async def xhs_rss(
+    request: Request,
+    feed_id: str,
+    ext: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    return await get_xhs_feed_rss(
+        request=request,
+        feed_id=feed_id,
+        limit=limit,
+        offset=offset,
+    )
 
 

@@ -90,7 +90,7 @@ class TestTemplateParser(unittest.TestCase):
     def test_feed_and_articles_template(self):
         """Test feed and articles template."""
         template = """{% if feed is defined %}{
- "feed": "{{ feed.mp_name }}",
+ "feed": "{{ feed.name }}",
  "articles": [
 {% for article in articles %}{"title": "{{ article.title }}", "pub_date": "{{ article.publish_time }}"}{% if not loop.last %},{% endif %}
 {% endfor %}
@@ -98,7 +98,7 @@ class TestTemplateParser(unittest.TestCase):
 }"""
         parser = TemplateParser(template)
         context = {
-            "feed": {"mp_name": "Test Feed"},
+            "feed": {"name": "Test Feed"},
             "articles": [
                 {"title": "Article 1", "publish_time": "2025-10-24"},
                 {"title": "Article 2", "publish_time": "2025-10-25"}

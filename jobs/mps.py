@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta
+from typing import Callable, List, Optional, Tuple
 from core.models.article import Article
 from .article import UpdateArticle,Update_Over
 import core.db as db
 from core.wx import WxGather
 from core.log import logger
 from core.task import TaskScheduler
-from core.models.feed import Feed
+from core.models.feed import Feed, PLATFORM_BILI, PLATFORM_DY, PLATFORM_INSTAGRAM, PLATFORM_MP, PLATFORM_TIKTOK, PLATFORM_X, PLATFORM_XHS, PLATFORM_YOUTUBE, infer_platform_from_id
 from core.config import cfg,DEBUG
-from core.print import print_info,print_success,print_error
+from core.print import print_info,print_success,print_error,print_warning
 from core.redis_client import clear_env_exception
 wx_db=db.Db(tag="任务调度")
 def fetch_all_article():
@@ -18,7 +19,7 @@ def fetch_all_article():
         mps=db.DB.get_all_mps()
         for item in mps:
             try:
-                wx.get_Articles(item.faker_id,CallBack=UpdateArticle,Mps_id=item.id,Mps_title=item.mp_name, MaxPage=1)
+                wx.get_Articles(item.faker_id,CallBack=UpdateArticle,Mps_id=item.id,Mps_title=item.name, MaxPage=1)
             except Exception as e:
                 print(e)
         print(wx.articles) 
@@ -34,103 +35,220 @@ def test(info:str):
 from core.models.message_task import MessageTask
 # from core.queue import TaskQueue
 from .webhook import web_hook
+from core.redfox.xhs import do_job_xhs
+from core.redfox.xhs.sync import XHS_KW_PREFIX, XHS_U_PREFIX
+from core.redfox.douyin import do_job_douyin
+from core.redfox.douyin.sync import DY_KW_PREFIX
+from core.redfox.bilibili import do_job_bilibili
+from core.redfox.bilibili.sync import BILI_KW_PREFIX
+from core.redfox.x import do_job_x
+from core.redfox.x.sync import X_KW_PREFIX
+from core.redfox.tiktok import do_job_tiktok
+from core.redfox.tiktok.sync import TIKTOK_KW_PREFIX
+from core.redfox.youtube import do_job_youtube
+from core.redfox.youtube.sync import YOUTUBE_KW_PREFIX
+from core.redfox.instagram import do_job_instagram
+from core.redfox.instagram.sync import INSTAGRAM_KW_PREFIX
 interval=int(cfg.get("interval",60)) # 兼容历史配置;get_Articles 已不再读取
-def do_job(mp=None,task:MessageTask=None,isTest=False):
-        """执行单个公众号的采集任务"""
-        # TaskQueue.add_task(test,info=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        # print("执行任务", task.mps_id)
-        print(f"执行任务 (测试模式: {isTest})")
-        
-        # 初始化变量，确保在所有分支中都有定义
-        count = 0
-        all_count = 0
-        mock_articles = []
-        success = False
-        error_msg = None
-        
-        try:
-            if isTest:
-                # 测试模式使用模拟数据
-                mock_articles = [{
-                    "id": "test-article-001",
-                    "mp_id": mp.id,
-                    "title": "测试文章标题",
-                    "pic_url": "https://via.placeholder.com/300x200",
-                    "url": "https://example.com/test-article",
-                    "description": "这是一篇测试文章的描述内容，用于测试webhook功能是否正常。",
-                    "publish_time": (datetime.now() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
-                    "content": "<p>这是测试文章的正文内容。</p>"
-                }]
-                count = 1
-                success = True
-            else:
-                wx=WxGather().Model()
-                try:
-                    wx.get_Articles(mp.faker_id,CallBack=UpdateArticle,Mps_id=mp.id,Mps_title=mp.mp_name, MaxPage=1,Over_CallBack=Update_Over)
-                    success = True
-                except Exception as e:
-                    print_error(f"获取文章失败 [{mp.mp_name}]: {e}")
-                    error_msg = str(e)
-                    # 不抛出异常，继续执行后续流程
-                finally:
-                    count = wx.all_count() if wx else 0
-                    mock_articles = wx.articles if wx else []
-                    all_count += count
 
-            # 执行 webhook 通知
+
+def _fetch_feed(feed: Feed, isTest: bool = False) -> Tuple[bool, int, List[dict]]:
+    """采集单个 feed 的最新内容 (跨平台派发)。
+
+    平台派发规则:
+      * ``platform == 'xhs'`` 或 id 以 ``XHS_KW_/XHS_U_`` 开头
+        → 走 ``do_job_xhs``, 返回 ``written`` (int) 和 normalize 后的 notes dict 列表
+      * 其他 (默认 'mp')
+        → 走 ``WxGather`` 公众号采集
+
+    Returns:
+        ``(success, count, articles)`` —— ``success`` 仅代表 fetcher 自身没有抛异常,
+        不代表"抓到了文章" (0 条数据是合法的)。
+        ``articles`` 是 dict 列表, 用于后续 webhook 模板渲染。xhs path 返回
+        ``_normalize_note`` 之后的字段 (id/title/content/...) 兼容
+        :class:`MessageWebHook` 模板占位符。
+    """
+    platform = (feed.platform or "").strip().lower()
+    if not platform or platform == "unknown":
+        platform = infer_platform_from_id(feed.id)
+    if platform in {"wechat", "wx", "weixin"}:
+        platform = PLATFORM_MP
+
+    if platform == PLATFORM_XHS:
+        # xhs 路径: do_job_xhs 已自带错误计数 / 自动暂停, 内部捕获 RedfoxError
+        # 后会写库, 然后 raise 让 TaskQueue 重试。这里只接住, 不抛。
+        try:
+            notes = do_job_xhs(feed, isTest)
+        except Exception as exc:  # noqa: BLE001
+            print_error(f"[xhs] 采集失败 [{feed.name}]: {exc}")
+            return False, 0, []
+        return True, len(notes), notes
+
+    if platform == PLATFORM_DY:
+        try:
+            works = do_job_douyin(feed, isTest)
+        except Exception as exc:  # noqa: BLE001
+            print_error(f"[dy] 采集失败 [{feed.name}]: {exc}")
+            return False, 0, []
+        return True, len(works), works
+
+    if platform == PLATFORM_BILI:
+        try:
+            works = do_job_bilibili(feed, isTest)
+        except Exception as exc:  # noqa: BLE001
+            print_error(f"[bili] 采集失败 [{feed.name}]: {exc}")
+            return False, 0, []
+        return True, len(works), works
+
+    if platform == PLATFORM_X:
+        try:
+            tweets = do_job_x(feed, isTest)
+        except Exception as exc:  # noqa: BLE001
+            print_error(f"[x] 采集失败 [{feed.name}]: {exc}")
+            return False, 0, []
+        return True, len(tweets), tweets
+
+    if platform == PLATFORM_TIKTOK:
+        try:
+            works = do_job_tiktok(feed, isTest)
+        except Exception as exc:  # noqa: BLE001
+            print_error(f"[tiktok] 采集失败 [{feed.name}]: {exc}")
+            return False, 0, []
+        return True, len(works), works
+
+    if platform == PLATFORM_YOUTUBE:
+        try:
+            works = do_job_youtube(feed, isTest)
+        except Exception as exc:  # noqa: BLE001
+            print_error(f"[youtube] 采集失败 [{feed.name}]: {exc}")
+            return False, 0, []
+        return True, len(works), works
+
+    if platform == PLATFORM_INSTAGRAM:
+        try:
+            works = do_job_instagram(feed, isTest)
+        except Exception as exc:  # noqa: BLE001
+            print_error(f"[instagram] 采集失败 [{feed.name}]: {exc}")
+            return False, 0, []
+        return True, len(works), works
+
+    # ===== 公众号路径 =====
+    if isTest:
+        mock_articles = [{
+            "id": f"test-article-{feed.id}",
+            "title": "测试文章标题",
+            "pic_url": "https://via.placeholder.com/300x200",
+            "url": "https://example.com/test-article",
+            "description": "这是一篇测试文章的描述内容，用于测试webhook功能是否正常。",
+            "publish_time": (datetime.now() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
+            "content": "<p>这是测试文章的正文内容。</p>",
+        }]
+        return True, 1, mock_articles
+
+    try:
+        wx = WxGather().Model()
+        wx.get_Articles(
+            feed.faker_id,
+            CallBack=UpdateArticle,
+            Mps_id=feed.id,
+            Mps_title=feed.name,
+            MaxPage=1,
+            Over_CallBack=Update_Over,
+        )
+        return True, (wx.all_count() if wx else 0), (wx.articles if wx else [])
+    except Exception as exc:  # noqa: BLE001
+        print_error(f"获取文章失败 [{feed.name}]: {exc}")
+        return False, 0, []
+
+
+def _execute_feed_for_task(feed: Feed, task: Optional[MessageTask] = None, isTest: bool = False):
+    """对单个 feed 执行完整一轮:采集 + webhook + tracker + 级联上报 (跨平台)。
+
+    流程:
+      1. ``_fetch_feed`` 跨平台派发采集, 拿到 ``(success, count, articles)``。
+      2. 仅在 ``task`` 配置了 ``web_hook_url`` 时跑 webhook (避免给无 url 的全局任务触发出站请求)。
+         xhs 全局任务 (XHS_GLOBAL_TASK_ID) 没有 webhook, 自然跳过。
+      3. 成功后清掉该 feed 的环境异常记录 (mp 路径生效,xhs 自身已有 error_count)。
+      4. 有 task + 非测试时跑 :class:`MessageTaskTracker` 进度记录 + 级联上报。
+    """
+    print(f"执行任务 (测试模式: {isTest})")
+
+    count = 0
+    articles: List[dict] = []
+    success = False
+    error_msg: Optional[str] = None
+
+    try:
+        success, count, articles = _fetch_feed(feed, isTest=isTest)
+
+        # 仅在 task 配置了 webhook url 时才触发
+        if task and (task.web_hook_url or "").strip():
             try:
                 from jobs.webhook import MessageWebHook
-                tms=MessageWebHook(task=task,feed=mp,articles=mock_articles)
+                tms = MessageWebHook(task=task, feed=feed, articles=articles)
                 web_hook(tms, is_test=isTest)
-                print_success(f"任务({task.id})[{mp.mp_name}]执行成功,{count}成功条数")
-                
-                # 采集成功，清除该公众号的环境异常记录
-                if not isTest and success and count > 0:
-                    try:
-                        clear_env_exception(mp_id=mp.id)
-                    except Exception as e:
-                        print_error(f"清除环境异常记录失败: {e}")
-                        
-            except Exception as e:
-                print_error(f"Webhook执行失败 [{mp.mp_name}]: {e}")
+                print_success(f"任务({task.id})[{feed.name}]执行成功,{count}成功条数")
+            except Exception as exc:  # noqa: BLE001
+                print_error(f"Webhook执行失败 [{feed.name}]: {exc}")
                 if not error_msg:
-                    error_msg = f"Webhook: {str(e)}"
-            
-            # 级联节点：上报任务执行结果到父节点
-            from jobs.cascade_sync import cascade_sync_service
-            from core.loop import submit_async
-            if not isTest and mock_articles:
-                try:
-                    result_data = [{
-                        "mp_id": mp.id,
-                        "mp_name": mp.mp_name,
-                        "article_count": len(mock_articles) if not isTest else 1,
-                        "success_count": count if not isTest else 1,
-                        "timestamp": datetime.now().isoformat()
-                    }]
-                    # 通过主事件循环跨线程上报,不阻塞当前 worker 线程
-                    submit_async(cascade_sync_service.report_task_result(task.id, result_data))
-                except Exception as e:
-                    print_error(f"上报任务结果失败: {str(e)}")
-                    
-        except Exception as e:
-            error_msg = str(e)
-            print_error(f"任务执行异常 [{mp.mp_name}]: {e}")
-            raise  # 重新抛出，让队列的重试机制处理
-        
-        finally:
-            # 记录执行结果到追踪器。
-            # 注意:执行无异常但抓到 0 条数据(账号近期未更新)不算失败。
-            # 只有 fetcher / webhook 真正抛异常才算 failed,与上方
-            # ``print_success(f"任务(...)执行成功,{count}成功条数")`` 保持一致。
-            if task and not isTest:
-                tracker.record_mp_result(
-                    task_id=task.id,
-                    mp_name=mp.mp_name,
-                    success=success,
-                    article_count=count,
-                    error=error_msg
-                )
+                    error_msg = f"Webhook: {exc}"
+
+        # mp 路径成功后清环境异常记录
+        if not isTest and success and count > 0:
+            try:
+                clear_env_exception(mp_id=feed.id)
+            except Exception as exc:  # noqa: BLE001
+                print_error(f"清除环境异常记录失败: {exc}")
+
+        # 级联节点: 上报任务执行结果到父节点 (仅在 task + 有抓取数据时上报)
+        if not isTest and task and articles:
+            try:
+                from jobs.cascade_sync import cascade_sync_service
+                from core.loop import submit_async
+                result_data = [{
+                    "id": feed.id,
+                    "name": feed.name,
+                    "article_count": len(articles),
+                    "success_count": count,
+                    "timestamp": datetime.now().isoformat(),
+                }]
+                # 通过主事件循环跨线程上报,不阻塞当前 worker 线程
+                submit_async(cascade_sync_service.report_task_result(task.id, result_data))
+            except Exception as exc:  # noqa: BLE001
+                print_error(f"上报任务结果失败: {exc}")
+
+    except Exception as exc:  # noqa: BLE001
+        error_msg = str(exc)
+        print_error(f"任务执行异常 [{feed.name}]: {exc}")
+        raise
+
+    finally:
+        # 记录执行结果到追踪器 (仅 task + 非测试场景)。
+        # 注意:无异常但抓到 0 条数据 (账号近期未更新) 不算 failed,
+        # 只有 fetcher / webhook 真正抛异常才算 failed。
+        if task and not isTest:
+            tracker.record_mp_result(
+                task_id=task.id,
+                mp_name=feed.name,
+                success=success,
+                article_count=count,
+                error=error_msg,
+            )
+
+
+# ===== 旧名兼容 (级联模块还在 import) =====
+# ``do_job(mp, task, isTest)`` 与 ``_execute_feed_for_task`` 语义等价,
+# 保留别名避免级联路径代码改动过大。``mp`` 参数名是历史遗留 — 现在
+# ``_execute_feed_for_task`` 第一个参数已重命名为 ``feed``, 但保留
+# ``mp`` 作为关键字参数别名方便老调用方。
+
+def do_job(mp=None, task: MessageTask = None, isTest: bool = False):
+    """旧名兼容 — 实际委托给 :func:`_execute_feed_for_task`。
+    级联模块 :mod:`jobs.cascade_sync` / :mod:`jobs.cascade_task_dispatcher` 仍在用。
+    """
+    if mp is None:
+        raise ValueError("do_job(mp=...) 不能为空")
+    return _execute_feed_for_task(mp, task=task, isTest=isTest)
 
 from core.queue import TaskQueue
 
@@ -264,20 +382,20 @@ def _run_batch(feeds, task, isTest, max_workers):
     def _run_with_subtask(feed):
         """包一层:每个 feed 实际执行前注册,结束后标记完成/失败。
 
-        不在 ``finally`` 里 ``remove_subtask`` —— 因为 :func:`do_job` 内部
+        不在 ``finally`` 里 ``remove_subtask`` —— 因为 :func:`_execute_feed_for_task` 内部
         已通过 :class:`MessageTaskTracker` 调用 :meth:`TaskQueue.mark_subtask_completed`,
         把 subtask 状态切到 ``completed`` / ``failed`` 并保留到 batch 结束。
         这里再 remove 会立即把刚标记的状态擦掉,前端看不到完成态。
 
-        ``do_job`` 通常不抛异常(fetcher 错误已在内部捕获);万一真抛出来,
-        这里兜底标 failed 后再 rethrow,让外层 :func:`_run_batch` 记录。
+        ``_execute_feed_for_task`` 通常不抛异常(fetcher 错误已在内部捕获);
+        万一真抛出来,这里兜底标 failed 后再 rethrow,让外层 :func:`_run_batch` 记录。
         """
-        TaskQueue.add_subtask(feed.mp_name)
+        TaskQueue.add_subtask(feed.name)
         try:
-            do_job(feed, task, isTest)
+            _execute_feed_for_task(feed, task, isTest)
         except Exception as unhandled_exc:  # noqa: BLE001
             TaskQueue.mark_subtask_completed(
-                feed.mp_name,
+                feed.name,
                 success=False,
                 error=f"unhandled: {unhandled_exc}",
             )
@@ -298,7 +416,7 @@ def _run_batch(feeds, task, isTest, max_workers):
                     fut.result()
                 except Exception as exc:  # noqa: BLE001
                     print_error(
-                        f"并发采集未捕获异常 [{feed.mp_name}]: {exc}"
+                        f"并发采集未捕获异常 [{feed.name}]: {exc}"
                     )
     finally:
         # 整个 batch 结束后,无论是否中途异常,确保子任务列表清空。
@@ -345,11 +463,16 @@ def add_job(feeds: list[Feed] = None, task: MessageTask = None, isTest=False):
     print_success(TaskQueue.get_queue_info())
 import json
 def get_feeds(task:MessageTask=None):
-     mps = json.loads(task.mps_id)
+     mps = json.loads(task.target_feed_ids)
      ids=",".join([item["id"]for item in mps])
      mps=wx_db.get_mps_list(ids)
      if len(mps)==0:
-        mps=wx_db.get_all_mps()
+        # 通用调度器里的公众号任务只能回落到公众号 Feed，不能把其他
+        # 平台订阅也当成“全部公众号”执行。
+        mps = [
+            feed for feed in wx_db.get_all_mps()
+            if _effective_feed_platform(feed) == PLATFORM_MP
+        ]
      return mps
 scheduler=TaskScheduler()
 def reload_job():
@@ -368,10 +491,134 @@ def run(job_id:str=None,isTest=False):
             #添加测试任务
             from core.print import print_warning
             print_warning(f"{task.name} 添加到队列运行")
-            # 修改：只传递 task，在 add_job 中动态获取 feeds
-            add_job(task=task,isTest=isTest)
+            dispatch_scheduled_task(task=task, isTest=isTest)
             pass
     return tasks
+
+
+SUPPORTED_TASK_PLATFORMS = (
+    PLATFORM_MP, PLATFORM_XHS, PLATFORM_DY, PLATFORM_BILI, PLATFORM_X,
+    PLATFORM_TIKTOK, PLATFORM_YOUTUBE, PLATFORM_INSTAGRAM,
+)
+
+
+def _parse_json_list(value):
+    if isinstance(value, list):
+        return value
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except (TypeError, ValueError):
+        return []
+
+
+def _normalize_task_platform(value: str) -> str:
+    platform = (value or "").strip().lower()
+    if platform in {"wechat", "wx", "weixin"}:
+        return PLATFORM_MP
+    return platform
+
+
+def _effective_feed_platform(feed: Feed) -> str:
+    """读取 Feed 平台；旧数据为 NULL/unknown 时按 ID 前缀纠正。"""
+    platform = _normalize_task_platform(getattr(feed, "platform", None) or "")
+    if not platform or platform == "unknown":
+        platform = infer_platform_from_id(getattr(feed, "id", ""))
+    return platform
+
+
+def resolve_task_scope(task: MessageTask):
+    """返回 ``(scope_type, platforms, feed_ids)``，并兼容升级前的任务。"""
+    scope_type = (getattr(task, "scope_type", None) or "legacy").strip().lower()
+    selected = _parse_json_list(getattr(task, "target_feed_ids", "[]"))
+    feed_ids = []
+    for item in selected:
+        feed_id = item.get("id") if isinstance(item, dict) else item
+        if feed_id:
+            feed_ids.append(str(feed_id))
+
+    if scope_type == "all":
+        return "all", list(SUPPORTED_TASK_PLATFORMS), []
+    if scope_type == "custom":
+        return "custom", [], feed_ids
+    if scope_type == "platforms":
+        platforms = [
+            _normalize_task_platform(str(item))
+            for item in _parse_json_list(getattr(task, "target_platforms", "[]"))
+        ]
+        platforms = [item for item in dict.fromkeys(platforms) if item in SUPPORTED_TASK_PLATFORMS]
+        return "platforms", platforms, []
+
+    # 历史任务没有 scope_type：有具体订阅时按自定义；否则仍只抓旧 platform，
+    # 避免升级后原来的“小红书全局采集”意外变成所有平台。
+    if feed_ids:
+        return "custom", [], feed_ids
+    legacy_platform = _normalize_task_platform(getattr(task, "platform", None) or "mp")
+    if legacy_platform not in SUPPORTED_TASK_PLATFORMS:
+        legacy_platform = PLATFORM_MP
+    return "platforms", [legacy_platform], []
+
+
+def resolve_task_feeds(task: MessageTask):
+    """按任务范围读取启用订阅，并按平台分组。"""
+    scope_type, platforms, feed_ids = resolve_task_scope(task)
+    session = db.DB.get_session()
+    try:
+        query = session.query(Feed).filter(Feed.status == 1)
+        if scope_type == "custom":
+            if not feed_ids:
+                return {}
+            query = query.filter(Feed.id.in_(feed_ids))
+        feeds = query.all()
+        grouped = {}
+        allowed = set(platforms)
+        for feed in feeds:
+            platform = _effective_feed_platform(feed)
+            if platform not in SUPPORTED_TASK_PLATFORMS:
+                continue
+            if scope_type != "custom" and platform not in allowed:
+                continue
+            grouped.setdefault(platform, []).append(feed)
+        return grouped
+    finally:
+        session.close()
+
+
+def dispatch_scheduled_task(task: MessageTask, isTest=False):
+    """统一调度入口：按任务的全部/平台/自定义范围分发采集。"""
+    grouped = resolve_task_feeds(task)
+    if not grouped:
+        print_info(f"任务[{task.id}]没有符合范围的启用订阅，已跳过")
+        return None
+
+    dispatchers = {
+        PLATFORM_MP: add_job,
+        PLATFORM_XHS: add_xhs_job,
+        PLATFORM_DY: add_douyin_job,
+        PLATFORM_BILI: add_bilibili_job,
+        PLATFORM_X: add_x_job,
+        PLATFORM_TIKTOK: add_tiktok_job,
+        PLATFORM_YOUTUBE: add_youtube_job,
+        PLATFORM_INSTAGRAM: add_instagram_job,
+    }
+    dispatched = []
+    for platform in SUPPORTED_TASK_PLATFORMS:
+        feeds = grouped.get(platform, [])
+        if not feeds:
+            continue
+        # 公众号执行器接收 Feed；其余执行器在线程内按 ID 重新查询，避免跨线程 Session。
+        refs = feeds if platform == PLATFORM_MP else [feed.id for feed in feeds]
+        dispatchers[platform](feeds=refs, task=task, isTest=isTest)
+        dispatched.append(platform)
+        # 测试执行只取范围内第一个有数据的平台、第一条订阅。
+        if isTest:
+            break
+    print_info(f"任务[{task.id}]已按范围分发平台: {', '.join(dispatched)}")
+    return dispatched
+
+
 def start_job(job_id:str=None):
     from .taskmsg import get_message_task
     tasks=get_message_task(job_id)
@@ -385,8 +632,13 @@ def start_job(job_id:str=None):
             print_error(f"任务[{task.id}]没有设置cron表达式")
             continue
 
-        # 修改：使用关键字参数传递 task，避免与 feeds 混淆
-        job_id=scheduler.add_cron_job(add_job,cron_expr=cron_exp,kwargs={'task': task},job_id=str(task.id),tag="定时采集")
+        job_id=scheduler.add_cron_job(
+            dispatch_scheduled_task,
+            cron_expr=cron_exp,
+            kwargs={'task': task},
+            job_id=str(task.id),
+            tag="统一定时采集",
+        )
         print(f"已添加任务: {job_id}")
     scheduler.start()
     print("启动任务")
@@ -394,6 +646,654 @@ def start_fix_article():
       #开启自动同步未同步 文章任务
     from jobs.fetch_no_article import start_sync_content
     start_sync_content()
+
+
+# ============================================================
+# 小红书 (XHS) 调度
+# ============================================================
+# 设计 (与微信公众号调度对称,  但完全独立):
+#   * 全局唯一 MessageTask, ``platform='xhs'``, ``target_feed_ids='[]'``
+#     (空列表 = "所有 XHS_KW_* / XHS_U_* feed")。
+#   * 每次 cron 触发 = 单条 TaskQueue 任务,  内部用 ThreadPoolExecutor 并发
+#     调用 ``do_job_xhs``。  错误计数 / 自动暂停由 ``do_job_xhs`` 自身管理。
+#   * 现有 WeChat 路径 (``add_job`` / ``start_job``) **未改动**,  本节为
+#     增量扩展,  不影响公众号 cron 行为。
+
+XHS_GLOBAL_TASK_ID = "xhs_global"
+XHS_GLOBAL_TASK_CRON = "0 */6 * * *"  # 默认每 6 小时,  可在数据库里改
+
+
+def _query_xhs_feeds() -> list[str]:
+    """从 DB 拉所有 ``status=1`` 的 XHS 订阅 ID (KW / U 两种都算)。
+
+    队列只接收 ID；工作线程执行时再用自己的 Session 查询 Feed，避免把
+    SQLAlchemy 对象跨 Session / 跨线程传递。
+    """
+    session = db.DB.get_session()
+    try:
+        rows = (
+            session.query(Feed.id)
+            .filter(Feed.status == 1)
+            .filter(
+                (Feed.id.like(f"{XHS_KW_PREFIX}%"))
+                | (Feed.id.like(f"{XHS_U_PREFIX}%"))
+            )
+            .all()
+        )
+        return [row[0] for row in rows]
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
+
+
+def _run_xhs_batch(feeds, task, isTest):
+    """并发执行一批 XHS feed 的采集 (供 ``TaskQueue`` 调用)。
+
+    与 ``_run_batch`` (公众号侧) 结构对称。走 :func:`_execute_feed_for_task`
+    统一入口,内部 ``_fetch_feed`` 按 platform 分派到 ``do_job_xhs``。
+    当前 XHS 全局任务未配置 ``web_hook_url``,webhook 步骤会自动跳过。
+    """
+    if not feeds:
+        return
+
+    target = feeds
+    if isTest:
+        target = feeds[:1]
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    TaskQueue.clear_subtasks()
+
+    def _run_with_subtask(feed_ref):
+        feed_id = feed_ref if isinstance(feed_ref, str) else feed_ref.id
+        worker_session = db.DB.get_session()
+        subtask_name = feed_id
+        try:
+            feed = worker_session.query(Feed).filter(Feed.id == feed_id).first()
+            if feed is None:
+                raise ValueError(f"订阅不存在: {feed_id}")
+            subtask_name = feed.name
+            TaskQueue.add_subtask(subtask_name)
+            _execute_feed_for_task(feed, task, isTest)
+        except Exception as unhandled_exc:  # noqa: BLE001
+            TaskQueue.mark_subtask_completed(
+                subtask_name,
+                success=False,
+                error=f"unhandled: {unhandled_exc}",
+            )
+            raise
+        finally:
+            worker_session.close()
+
+    try:
+        with ThreadPoolExecutor(
+            max_workers=max(1, min(len(target), max_workers)),
+            thread_name_prefix="xhs-fetch",
+        ) as executor:
+            futures = {
+                executor.submit(_run_with_subtask, feed_ref): feed_ref
+                for feed_ref in target
+            }
+            for fut in as_completed(futures):
+                feed_ref = futures[fut]
+                try:
+                    fut.result()
+                except Exception as exc:  # noqa: BLE001
+                    feed_id = feed_ref if isinstance(feed_ref, str) else feed_ref.id
+                    print_error(f"[xhs] 并发采集未捕获异常 [{feed_id}]: {exc}")
+    finally:
+        TaskQueue.clear_subtasks()
+
+
+def add_xhs_job(feeds=None, task: MessageTask = None, isTest=False):
+    """派发一批 XHS feed 到 TaskQueue。
+
+    ``feeds`` 缺省时按 ``task`` 解析 — 当前仅支持 ``task.id ==
+    XHS_GLOBAL_TASK_ID`` (从 DB 拉所有活跃 XHS 订阅)。  也支持手动指定
+    ``feeds`` 列表 (单元测试 / API 触发用)。
+    """
+    if isTest:
+        TaskQueue.clear_queue()
+
+    if feeds is None:
+        if task is not None and task.id == XHS_GLOBAL_TASK_ID:
+            feeds = _query_xhs_feeds()
+        else:
+            feeds = []
+
+    if not feeds:
+        print_info("[xhs] 没有可派发的 feed (status=1 且 id 以 XHS_KW_/XHS_U_ 开头)")
+        return
+
+    name = task.name if task else "xhs_global"
+    prefix = "[测试]" if isTest else ""
+    task_label = f"{prefix}XHS采集:{name}({len(feeds)} feeds)"
+
+    TaskQueue.add_task(
+        _run_xhs_batch,
+        list(feeds),
+        task,
+        isTest,
+        task_name=task_label,
+    )
+    print_info(f"{task_label}, 加入队列成功")
+    print_success(TaskQueue.get_queue_info())
+
+
+def ensure_xhs_global_task() -> MessageTask:
+    """确保全局 XHS MessageTask 存在 (不存在则按默认配置插入一条)。
+
+    Returns:
+        MessageTask: 已存在或新建的全局任务。
+    """
+    session = db.DB.get_session()
+    try:
+        existing = (
+            session.query(MessageTask)
+            .filter(MessageTask.id == XHS_GLOBAL_TASK_ID)
+            .first()
+        )
+        if existing:
+            # 同步关键字段: 用户可能从 UI 改了 status / cron_exp, 不覆盖
+            return existing
+
+        cron = (
+            cfg.get("xhs.global_cron")
+            or cfg.get("xhs.refresh_interval_cron")
+            or XHS_GLOBAL_TASK_CRON
+        )
+        task = MessageTask(
+            id=XHS_GLOBAL_TASK_ID,
+            name="小红书全局采集",
+            message_type=0,
+            message_template="",
+            web_hook_url="",
+            headers=None,
+            cookies=None,
+            target_feed_ids="[]",  # 空 = "所有 XHS feed"
+            platform="xhs",
+            cron_exp=cron,
+            status=1,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        print_success(f"[xhs] 已创建全局 MessageTask: id={task.id} cron={cron}")
+        return task
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        print_error(f"[xhs] 创建全局 MessageTask 失败: {exc}")
+        return None
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
+
+
+def start_xhs_job():
+    """注册 XHS 全局 MessageTask 的 cron 任务 (复用现有 scheduler 单例)。
+
+    仅调度 ``platform='xhs'`` 且 ``id == XHS_GLOBAL_TASK_ID`` 的那条任务。
+    """
+    global_task = ensure_xhs_global_task()
+    if global_task is None:
+        print_warning("[xhs] 全局任务不存在且创建失败, 跳过 cron 注册")
+        return
+
+    if not global_task.cron_exp:
+        print_warning(f"[xhs] 全局任务 {global_task.id} 未配置 cron_exp, 跳过")
+        return
+
+    job_id = scheduler.add_cron_job(
+        add_xhs_job,
+        cron_expr=global_task.cron_exp,
+        kwargs={"task": global_task},
+        job_id=f"xhs-{global_task.id}",
+        tag="XHS定时采集",
+    )
+    print_success(f"[xhs] cron 已注册: {job_id} cron={global_task.cron_exp}")
+
+
+# ============================================================
+# 抖音 (Douyin) 调度
+# ============================================================
+
+DOUYIN_GLOBAL_TASK_ID = "douyin_global"
+DOUYIN_GLOBAL_TASK_CRON = "0 */6 * * *"
+
+
+def _query_douyin_feeds() -> list[str]:
+    session = db.DB.get_session()
+    try:
+        rows = (
+            session.query(Feed.id)
+            .filter(Feed.status == 1)
+            .filter(Feed.id.like(f"{DY_KW_PREFIX}%"))
+            .all()
+        )
+        return [row[0] for row in rows]
+    finally:
+        session.close()
+
+
+def _run_douyin_batch(feeds, task, isTest):
+    if not feeds:
+        return
+    target = feeds[:1] if isTest else feeds
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    TaskQueue.clear_subtasks()
+
+    def _run_with_subtask(feed_ref):
+        feed_id = feed_ref if isinstance(feed_ref, str) else feed_ref.id
+        worker_session = db.DB.get_session()
+        subtask_name = feed_id
+        try:
+            feed = worker_session.query(Feed).filter(Feed.id == feed_id).first()
+            if feed is None:
+                raise ValueError(f"订阅不存在: {feed_id}")
+            subtask_name = feed.name
+            TaskQueue.add_subtask(subtask_name)
+            _execute_feed_for_task(feed, task, isTest)
+        except Exception as exc:  # noqa: BLE001
+            TaskQueue.mark_subtask_completed(
+                subtask_name, success=False, error=f"unhandled: {exc}"
+            )
+            raise
+        finally:
+            worker_session.close()
+
+    try:
+        with ThreadPoolExecutor(
+            max_workers=max(1, min(len(target), max_workers)),
+            thread_name_prefix="douyin-fetch",
+        ) as executor:
+            futures = {
+                executor.submit(_run_with_subtask, feed_ref): feed_ref for feed_ref in target
+            }
+            for future in as_completed(futures):
+                feed_ref = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:  # noqa: BLE001
+                    feed_id = feed_ref if isinstance(feed_ref, str) else feed_ref.id
+                    print_error(f"[dy] 并发采集未捕获异常 [{feed_id}]: {exc}")
+    finally:
+        TaskQueue.clear_subtasks()
+
+
+def add_douyin_job(feeds=None, task: MessageTask = None, isTest=False):
+    if isTest:
+        TaskQueue.clear_queue()
+    if feeds is None:
+        feeds = (
+            _query_douyin_feeds()
+            if task is not None and task.id == DOUYIN_GLOBAL_TASK_ID
+            else []
+        )
+    if not feeds:
+        print_info("[dy] 没有可派发的抖音订阅")
+        return
+    name = task.name if task else DOUYIN_GLOBAL_TASK_ID
+    prefix = "[测试]" if isTest else ""
+    task_label = f"{prefix}抖音采集:{name}({len(feeds)} feeds)"
+    TaskQueue.add_task(
+        _run_douyin_batch,
+        list(feeds),
+        task,
+        isTest,
+        task_name=task_label,
+    )
+    print_info(f"{task_label}, 加入队列成功")
+
+
+def ensure_douyin_global_task() -> MessageTask:
+    session = db.DB.get_session()
+    try:
+        existing = session.query(MessageTask).filter(
+            MessageTask.id == DOUYIN_GLOBAL_TASK_ID
+        ).first()
+        if existing:
+            return existing
+        cron = cfg.get("douyin.global_cron") or DOUYIN_GLOBAL_TASK_CRON
+        task = MessageTask(
+            id=DOUYIN_GLOBAL_TASK_ID,
+            name="抖音全局采集",
+            message_type=0,
+            message_template="",
+            web_hook_url="",
+            headers=None,
+            cookies=None,
+            target_feed_ids="[]",
+            platform="dy",
+            cron_exp=cron,
+            status=1,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        print_success(f"[dy] 已创建全局 MessageTask: id={task.id} cron={cron}")
+        return task
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        print_error(f"[dy] 创建全局 MessageTask 失败: {exc}")
+        return None
+    finally:
+        session.close()
+
+
+def start_douyin_job():
+    global_task = ensure_douyin_global_task()
+    if global_task is None:
+        print_warning("[dy] 全局任务不存在且创建失败, 跳过 cron 注册")
+        return
+    if not global_task.cron_exp:
+        print_warning(f"[dy] 全局任务 {global_task.id} 未配置 cron_exp, 跳过")
+        return
+    job_id = scheduler.add_cron_job(
+        add_douyin_job,
+        cron_expr=global_task.cron_exp,
+        kwargs={"task": global_task},
+        job_id=f"douyin-{global_task.id}",
+        tag="抖音定时采集",
+    )
+    print_success(f"[dy] cron 已注册: {job_id} cron={global_task.cron_exp}")
+
+
+# ============================================================
+# B站 (Bilibili) 调度
+# ============================================================
+
+BILIBILI_GLOBAL_TASK_ID = "bilibili_global"
+BILIBILI_GLOBAL_TASK_CRON = "0 */6 * * *"
+
+
+def _query_bilibili_feeds() -> list[str]:
+    session = db.DB.get_session()
+    try:
+        rows = session.query(Feed.id).filter(
+            Feed.status == 1,
+            Feed.id.like(f"{BILI_KW_PREFIX}%"),
+        ).all()
+        return [row[0] for row in rows]
+    finally:
+        session.close()
+
+
+def add_bilibili_job(feeds=None, task: MessageTask = None, isTest=False):
+    if isTest:
+        TaskQueue.clear_queue()
+    if feeds is None:
+        feeds = _query_bilibili_feeds() if task is not None and task.id == BILIBILI_GLOBAL_TASK_ID else []
+    if not feeds:
+        print_info("[bili] 没有可派发的B站订阅")
+        return
+    name = task.name if task else BILIBILI_GLOBAL_TASK_ID
+    prefix = "[测试]" if isTest else ""
+    task_label = f"{prefix}B站采集:{name}({len(feeds)} feeds)"
+    TaskQueue.add_task(
+        _run_douyin_batch,
+        list(feeds),
+        task,
+        isTest,
+        task_name=task_label,
+    )
+    print_info(f"{task_label}, 加入队列成功")
+
+
+def ensure_bilibili_global_task() -> MessageTask:
+    session = db.DB.get_session()
+    try:
+        existing = session.query(MessageTask).filter(MessageTask.id == BILIBILI_GLOBAL_TASK_ID).first()
+        if existing:
+            return existing
+        cron = cfg.get("bilibili.global_cron") or BILIBILI_GLOBAL_TASK_CRON
+        task = MessageTask(
+            id=BILIBILI_GLOBAL_TASK_ID, name="B站全局采集", message_type=0,
+            message_template="", web_hook_url="", headers=None, cookies=None,
+            target_feed_ids="[]", platform="bili", cron_exp=cron, status=1,
+            created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        print_success(f"[bili] 已创建全局 MessageTask: id={task.id} cron={cron}")
+        return task
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        print_error(f"[bili] 创建全局 MessageTask 失败: {exc}")
+        return None
+    finally:
+        session.close()
+
+
+def start_bilibili_job():
+    global_task = ensure_bilibili_global_task()
+    if global_task is None:
+        print_warning("[bili] 全局任务不存在且创建失败, 跳过 cron 注册")
+        return
+    if not global_task.cron_exp:
+        print_warning(f"[bili] 全局任务 {global_task.id} 未配置 cron_exp, 跳过")
+        return
+    job_id = scheduler.add_cron_job(
+        add_bilibili_job,
+        cron_expr=global_task.cron_exp,
+        kwargs={"task": global_task},
+        job_id=f"bilibili-{global_task.id}",
+        tag="B站定时采集",
+    )
+    print_success(f"[bili] cron 已注册: {job_id} cron={global_task.cron_exp}")
+
+
+# ============================================================
+# X (Twitter) 调度
+# ============================================================
+
+X_GLOBAL_TASK_ID = "x_global"
+X_GLOBAL_TASK_CRON = "0 */6 * * *"
+
+
+def _query_x_feeds() -> list[str]:
+    session = db.DB.get_session()
+    try:
+        rows = session.query(Feed.id).filter(
+            Feed.status == 1,
+            Feed.id.like(f"{X_KW_PREFIX}%"),
+        ).all()
+        return [row[0] for row in rows]
+    finally:
+        session.close()
+
+
+def add_x_job(feeds=None, task: MessageTask = None, isTest=False):
+    if isTest:
+        TaskQueue.clear_queue()
+    if feeds is None:
+        feeds = _query_x_feeds() if task is not None and task.id == X_GLOBAL_TASK_ID else []
+    if not feeds:
+        print_info("[x] 没有可派发的X订阅")
+        return
+    name = task.name if task else X_GLOBAL_TASK_ID
+    prefix = "[测试]" if isTest else ""
+    task_label = f"{prefix}X采集:{name}({len(feeds)} feeds)"
+    TaskQueue.add_task(
+        _run_douyin_batch,
+        list(feeds),
+        task,
+        isTest,
+        task_name=task_label,
+    )
+    print_info(f"{task_label}, 加入队列成功")
+
+
+def ensure_x_global_task() -> MessageTask:
+    session = db.DB.get_session()
+    try:
+        existing = session.query(MessageTask).filter(MessageTask.id == X_GLOBAL_TASK_ID).first()
+        if existing:
+            return existing
+        cron = cfg.get("x.global_cron") or X_GLOBAL_TASK_CRON
+        task = MessageTask(
+            id=X_GLOBAL_TASK_ID, name="X全局采集", message_type=0,
+            message_template="", web_hook_url="", headers=None, cookies=None,
+            target_feed_ids="[]", platform="x", cron_exp=cron, status=1,
+            created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        print_success(f"[x] 已创建全局 MessageTask: id={task.id} cron={cron}")
+        return task
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        print_error(f"[x] 创建全局 MessageTask 失败: {exc}")
+        return None
+    finally:
+        session.close()
+
+
+def start_x_job():
+    global_task = ensure_x_global_task()
+    if global_task is None:
+        print_warning("[x] 全局任务不存在且创建失败, 跳过 cron 注册")
+        return
+    if not global_task.cron_exp:
+        print_warning(f"[x] 全局任务 {global_task.id} 未配置 cron_exp, 跳过")
+        return
+    job_id = scheduler.add_cron_job(
+        add_x_job,
+        cron_expr=global_task.cron_exp,
+        kwargs={"task": global_task},
+        job_id=f"x-{global_task.id}",
+        tag="X定时采集",
+    )
+    print_success(f"[x] cron 已注册: {job_id} cron={global_task.cron_exp}")
+
+
+# ============================================================
+# TikTok / YouTube / Instagram 调度
+# ============================================================
+
+_FOREIGN_TASK_CONFIG = {
+    "tiktok": {"id": "tiktok_global", "label": "TikTok", "prefix": TIKTOK_KW_PREFIX},
+    "youtube": {"id": "youtube_global", "label": "YouTube", "prefix": YOUTUBE_KW_PREFIX},
+    "instagram": {"id": "instagram_global", "label": "Instagram", "prefix": INSTAGRAM_KW_PREFIX},
+}
+
+
+def _query_foreign_feeds(platform_key: str) -> list[str]:
+    info = _FOREIGN_TASK_CONFIG[platform_key]
+    session = db.DB.get_session()
+    try:
+        rows = session.query(Feed.id).filter(
+            Feed.status == 1,
+            Feed.id.like(f"{info['prefix']}%"),
+        ).all()
+        return [row[0] for row in rows]
+    finally:
+        session.close()
+
+
+def _add_foreign_job(platform_key: str, feeds=None, task: MessageTask = None, isTest=False):
+    info = _FOREIGN_TASK_CONFIG[platform_key]
+    if isTest:
+        TaskQueue.clear_queue()
+    if feeds is None:
+        feeds = _query_foreign_feeds(platform_key) if task is not None and task.id == info["id"] else []
+    if not feeds:
+        print_info(f"[{platform_key}] 没有可派发的{info['label']}订阅")
+        return
+    name = task.name if task else info["id"]
+    test_prefix = "[测试]" if isTest else ""
+    task_label = f"{test_prefix}{info['label']}采集:{name}({len(feeds)} feeds)"
+    TaskQueue.add_task(_run_douyin_batch, list(feeds), task, isTest, task_name=task_label)
+    print_info(f"{task_label}, 加入队列成功")
+
+
+def add_tiktok_job(feeds=None, task: MessageTask = None, isTest=False):
+    return _add_foreign_job("tiktok", feeds, task, isTest)
+
+
+def add_youtube_job(feeds=None, task: MessageTask = None, isTest=False):
+    return _add_foreign_job("youtube", feeds, task, isTest)
+
+
+def add_instagram_job(feeds=None, task: MessageTask = None, isTest=False):
+    return _add_foreign_job("instagram", feeds, task, isTest)
+
+
+def _ensure_foreign_global_task(platform_key: str) -> MessageTask:
+    info = _FOREIGN_TASK_CONFIG[platform_key]
+    session = db.DB.get_session()
+    try:
+        existing = session.query(MessageTask).filter(MessageTask.id == info["id"]).first()
+        if existing:
+            return existing
+        cron = cfg.get(f"{platform_key}.global_cron") or "0 */6 * * *"
+        task = MessageTask(
+            id=info["id"], name=f"{info['label']}全局采集", message_type=0,
+            message_template="", web_hook_url="", headers=None, cookies=None,
+            target_feed_ids="[]", platform=platform_key, cron_exp=cron, status=1,
+            created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        print_success(f"[{platform_key}] 已创建全局 MessageTask: id={task.id} cron={cron}")
+        return task
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        print_error(f"[{platform_key}] 创建全局 MessageTask 失败: {exc}")
+        return None
+    finally:
+        session.close()
+
+
+def ensure_tiktok_global_task() -> MessageTask:
+    return _ensure_foreign_global_task("tiktok")
+
+
+def ensure_youtube_global_task() -> MessageTask:
+    return _ensure_foreign_global_task("youtube")
+
+
+def ensure_instagram_global_task() -> MessageTask:
+    return _ensure_foreign_global_task("instagram")
+
+
+def _start_foreign_job(platform_key: str, add_job: Callable):
+    info = _FOREIGN_TASK_CONFIG[platform_key]
+    global_task = _ensure_foreign_global_task(platform_key)
+    if global_task is None:
+        print_warning(f"[{platform_key}] 全局任务不存在且创建失败, 跳过 cron 注册")
+        return
+    if not global_task.cron_exp:
+        print_warning(f"[{platform_key}] 全局任务 {global_task.id} 未配置 cron_exp, 跳过")
+        return
+    job_id = scheduler.add_cron_job(
+        add_job, cron_expr=global_task.cron_exp, kwargs={"task": global_task},
+        job_id=f"{platform_key}-{global_task.id}", tag=f"{info['label']}定时采集",
+    )
+    print_success(f"[{platform_key}] cron 已注册: {job_id} cron={global_task.cron_exp}")
+
+
+def start_tiktok_job():
+    return _start_foreign_job("tiktok", add_tiktok_job)
+
+
+def start_youtube_job():
+    return _start_foreign_job("youtube", add_youtube_job)
+
+
+def start_instagram_job():
+    return _start_foreign_job("instagram", add_instagram_job)
 
 def start_article_stats_refresh():
     """启动文章统计定时刷新任务"""

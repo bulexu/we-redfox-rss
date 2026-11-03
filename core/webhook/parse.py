@@ -16,8 +16,8 @@ def parseTemplate(template:str="", data:dict=None):
     # 示例4: 使用Feed和Article模型数据
     if template == "":
         template = """订阅源信息:
-        名称:{{feed.mp_name}}
-        描述:{{feed.mp_intro}}
+        名称:{{feed.name}}
+        描述:{{feed.intro}}
         最新文章:{% if articles %}
         {% for article in articles %}
         - {{ article.title }} ({{ article.pub_date }})
@@ -31,7 +31,7 @@ def parseTemplate(template:str="", data:dict=None):
     return result4
 if __name__ == "__main__":
     # 示例4: 使用Feed和Article模型数据
-    feed = Feed(mp_name="示例订阅源", mp_intro="这是一个示例订阅源")
+    feed = Feed(name="示例订阅源", intro="这是一个示例订阅源")
     articles = [
         
     ]

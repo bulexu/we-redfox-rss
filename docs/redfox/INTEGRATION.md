@@ -113,7 +113,7 @@ Content-Type: application/json
 * `core/wx/base.py` — `WxGather.search_Biz` 已切换到 redfox
 * `core/wx/model/web.py` — `MpsWeb.get_Articles` 已切换到 redfox
 * `core/wx/model/app.py`、`core/wx/model/api.py` — 历史兼容 shim
-* `apis/redfox.py` — `/api/v1/wx/redfox/{logs,stats,logs/clear}` 新接口
+* `apis/redfox.py` — `/api/v1/redfox/{logs,stats,logs/clear}` 新接口
 
 ## 已下线的旧入口
 

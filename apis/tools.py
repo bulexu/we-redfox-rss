@@ -98,11 +98,11 @@ async def export_articles(
     try:
         # 检查是否已有相同 mp_id 的导出任务正在运行
         for thread in threading.enumerate():
-            if thread.name == f"export_articles_{request.mp_id}":
+            if thread.name == f"export_articles_{request.feed_id}":
                 return error_response(400, "该公众号的导出任务已在处理中，请勿重复点击")
                 
         # 直接生成 zip_filename 并返回
-        docx_path = f"./data/docs/{request.mp_id}/"
+        docx_path = f"./data/docs/{request.feed_id}/"
         if request.zip_filename:
             zip_file_path = f"{docx_path}{request.zip_filename}"
         else:
@@ -112,7 +112,7 @@ async def export_articles(
         export_thread = threading.Thread(
             target=_export_articles_worker,
             args=(
-                request.mp_id,
+                request.feed_id,
                 request.doc_id,
                 request.page_size,
                 request.page_count,
@@ -126,7 +126,7 @@ async def export_articles(
                 request.export_pdf,
                 request.zip_filename
             ),
-            name=f"export_articles_{request.mp_id}"
+            name=f"export_articles_{request.feed_id}"
         )
         export_thread.start()
         
@@ -271,7 +271,7 @@ async def delete_export_file(
             return error_response(400, "文件名和公众号ID不能为空")
         
         # 构建文件路径并做路径归一化及安全检测
-        base_path = os.path.realpath(f"./data/docs/{request.mp_id}/")
+        base_path = os.path.realpath(f"./data/docs/{request.feed_id}/")
         unsafe_path = os.path.join(base_path, request.filename)
         safe_path = os.path.realpath(os.path.normpath(unsafe_path))
         

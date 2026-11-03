@@ -1,31 +1,47 @@
 """Redfox 数据接口封装（基于官方 redfox-python-sdk）
 
-本目录是对 PyPI `redfox-python-sdk` 的薄封装，保留与早期自定义实现
-兼容的模块级 API（`get_account_info` / `search_user` / `query_work_list` /
-`iter_work_list`），以便上层调用方无感知切换。
+本目录按平台拆分:
+  * ``base``    —— 共性层:  SDK 构造 / 调用日志 / 异常归一 / 线程缓存
+  * ``wechat``  —— 公众号平台特定方法 (账号信息 / 作品列表 / 实时正文)
+  * ``xhs``     —— 小红书平台特定方法 + 同步 worker
 
-公众号正文仍由 `driver.wxarticle` 提供，本模块只负责账号信息与
-作品列表的拉取。
+公众号正文仍由 ``driver.wxarticle`` 提供 (走 playwright),  本模块
+只负责账号信息与作品列表的拉取 (走 redfox 广域库) 和实时正文补充。
 
-使用示例::
+顶层 (本 ``__init__``) 同时保留公众号模块级便捷函数,  以便旧调用方
+无感知切换::
 
-    from core.redfox import get_account_info, search_user, query_work_list
-    info = get_account_info(account="duhaoshu")
-    # 关键词搜索（公众号发现场景）：每页 20 条
-    results = search_user(keyword="十点读书", offset=0)
-    works = query_work_list(bizInfo="MjM5MDMyMzg2MA==", offset=0)
+    from core.redfox import (
+        get_account_info,        # 公众号账号信息
+        search_user,             # 关键词搜索公众号
+        query_work_list,         # 单公众号作品列表
+        iter_work_list,          # 按页迭代作品列表
+        fetch_article_content,   # 实时公众号正文
+        RedfoxError,
+        DEFAULT_BASE_URL,
+        PAGE_SIZE,
+        SUCCESS_CODE,
+        close_all_clients,
+    )
+
+小红书入口请走 ``core.redfox.xhs``::
+
+    from core.redfox.xhs import (
+        do_job_xhs,
+        build_feed_id,
+        search_articles,
+        search_users,
+    )
 """
-
-from .client import (
-    ACCOUNT_INFO_PATH,
-    ARTICLE_CONTENT_PATH,
+from .base import (
     DEFAULT_BASE_URL,
     PAGE_SIZE,
-    SEARCH_USER_PATH,
-    SUCCESS_CODE,
-    WORK_LIST_PATH,
+    RedfoxClient,
     RedfoxError,
+    SUCCESS_CODE,
     close_all_clients,
+)
+from .wechat import (
     fetch_article_content,
     get_account_info,
     iter_work_list,
@@ -34,20 +50,20 @@ from .client import (
 )
 
 __all__ = [
-    # 模块级常量
-    "DEFAULT_BASE_URL",
-    "ACCOUNT_INFO_PATH",
-    "WORK_LIST_PATH",
-    "SEARCH_USER_PATH",
-    "ARTICLE_CONTENT_PATH",
-    "SUCCESS_CODE",
-    "PAGE_SIZE",
-    # 函数
+    # 基础类 / 异常 / 常量
+    "RedfoxClient",
     "RedfoxError",
-    "fetch_article_content",
-    "get_account_info",
-    "iter_work_list",
-    "query_work_list",
-    "search_user",
+    "DEFAULT_BASE_URL",
+    "PAGE_SIZE",
+    "SUCCESS_CODE",
     "close_all_clients",
+    # 公众号便捷函数 (兼容旧 import)
+    "get_account_info",
+    "search_user",
+    "query_work_list",
+    "iter_work_list",
+    "fetch_article_content",
+    # 子包 (供 ``from core.redfox.xhs import ...``)
+    "wechat",
+    "xhs",
 ]

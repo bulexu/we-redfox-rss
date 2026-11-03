@@ -29,7 +29,7 @@ GET /api/github/status
   "is_git_repo": true,
   "current_branch": "main",
   "has_changes": false,
-  "remote_url": "https://github.com/rachelos/we-mp-rss.git",
+  "remote_url": "https://github.com/bulexu/we-redfox-rss.git",
   "last_commit": "abc1234 Fix some bugs",
   "ahead_commits": 0,
   "behind_commits": 2,

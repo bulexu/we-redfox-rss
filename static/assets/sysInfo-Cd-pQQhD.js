@@ -1,0 +1,1 @@
+import{t as e}from"./http-BZILK-92.js";var t=async()=>await e.get(`/sys/info`),n=async()=>await e.get(`/sys/resources`),r=async()=>await e.post(`/sys/article/refresh`);export{n,r,t};

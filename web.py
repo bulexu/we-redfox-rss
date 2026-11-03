@@ -35,6 +35,12 @@ from apis.filter_rule import router as filter_rule_router
 from apis.task_queue import router as task_queue_router
 from apis.proxy import router as proxy_router
 from apis.lark import router as lark_router
+from apis.xhs import router as xhs_router
+from apis.douyin import router as douyin_router
+from apis.bilibili import router as bilibili_router
+from apis.x import router as x_router
+from apis.foreign import instagram_router, tiktok_router, youtube_router
+from apis.feeds import router as feeds_router
 from views import router as views_router
 import apis
 import os
@@ -106,7 +112,7 @@ async def add_custom_header(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Version"] = VERSION
     response.headers["X-Powered-By"] = "Rachel"
-    response.headers["GITHUB"] = "https://github.com/rachelos/we-mp-rss"
+    response.headers["GITHUB"] = "https://github.com/bulexu/we-redfox-rss"
     response.headers["Server"] = cfg.get("app_name", "WeRSS")
     return response
 # 创建API路由分组
@@ -129,6 +135,14 @@ api_router.include_router(filter_rule_router)
 api_router.include_router(task_queue_router)
 api_router.include_router(proxy_router)
 api_router.include_router(lark_router)
+api_router.include_router(xhs_router)
+api_router.include_router(douyin_router)
+api_router.include_router(bilibili_router)
+api_router.include_router(x_router)
+api_router.include_router(tiktok_router)
+api_router.include_router(youtube_router)
+api_router.include_router(instagram_router)
+api_router.include_router(feeds_router)
 
 resource_router = APIRouter(prefix="/static")
 resource_router.include_router(res_router)

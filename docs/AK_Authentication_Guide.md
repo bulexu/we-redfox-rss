@@ -53,7 +53,7 @@ auth_header = f"AK-SK {access_key}:{secret_key}"
 
 # 发起请求
 response = requests.get(
-    'http://your-api-url/api/v1/wx/articles',
+    'http://your-api-url/api/v1/articles',
     headers={'Authorization': auth_header}
 )
 
@@ -64,7 +64,7 @@ print(response.json())
 
 ```bash
 curl -H "Authorization: AK-SK WK_YOUR_KEY:SK_YOUR_SECRET" \
-     http://your-api-url/api/v1/wx/articles
+     http://your-api-url/api/v1/articles
 ```
 
 #### JavaScript/Node.js 示例
@@ -114,11 +114,11 @@ api.get('/wx/articles').then(res => {
 
 | 操作 | 方法 | 端点 |
 |------|------|------|
-| 创建 AK | POST | `/api/v1/wx/auth/ak/create` |
-| 查询列表 | GET | `/api/v1/wx/auth/ak/list` |
-| 更新 AK | PUT | `/api/v1/wx/auth/ak/{ak_id}` |
-| 停用 AK | POST | `/api/v1/wx/auth/ak/{ak_id}/deactivate` |
-| 删除 AK | DELETE | `/api/v1/wx/auth/ak/{ak_id}` |
+| 创建 AK | POST | `/api/v1/auth/ak/create` |
+| 查询列表 | GET | `/api/v1/auth/ak/list` |
+| 更新 AK | PUT | `/api/v1/auth/ak/{ak_id}` |
+| 停用 AK | POST | `/api/v1/auth/ak/{ak_id}/deactivate` |
+| 删除 AK | DELETE | `/api/v1/auth/ak/{ak_id}` |
 
 ## 常见问题
 

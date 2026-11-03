@@ -9,7 +9,7 @@ from .base import success_response, error_response
 from datetime import datetime
 from core.config import cfg
 from core.res import save_avatar_locally
-from core.models.feed import FEATURED_MP_ID, FEATURED_MP_NAME, FEATURED_MP_INTRO
+from core.models.feed import FEATURED_MP_ID, FEATURED_MP_NAME, FEATURED_MP_INTRO, PLATFORM_MP
 from core.models.base import DATA_STATUS
 from core.cache import clear_cache_pattern
 import io
@@ -29,9 +29,9 @@ def build_featured_mp_item():
     now = datetime.now().isoformat()
     return {
         "id": FEATURED_MP_ID,
-        "mp_name": FEATURED_MP_NAME,
-        "mp_cover": "/static/logo.svg",
-        "mp_intro": FEATURED_MP_INTRO,
+        "name": FEATURED_MP_NAME,
+        "cover": "/static/logo.svg",
+        "intro": FEATURED_MP_INTRO,
         "status": 1,
         "created_at": now,
         "is_system": True
@@ -57,15 +57,16 @@ def _ensure_featured_feed(session):
     now = datetime.now()
     featured_feed = Feed(
         id=FEATURED_MP_ID,
-        mp_name=FEATURED_MP_NAME,
-        mp_cover="",
-        mp_intro=FEATURED_MP_INTRO,
+        name=FEATURED_MP_NAME,
+        cover="",
+        intro=FEATURED_MP_INTRO,
         status=1,
         sync_time=0,
         update_time=0,
         created_at=now,
         updated_at=now,
-        faker_id=FEATURED_MP_ID
+        faker_id=FEATURED_MP_ID,
+        platform=PLATFORM_MP,
     )
     session.add(featured_feed)
     return featured_feed
@@ -127,7 +128,7 @@ async def _run_add_featured_article_task(task_id: str, url: str):
 
         existing = session.query(Article).filter(Article.id == article_id).first()
         if existing:
-            existing.mp_id = FEATURED_MP_ID
+            existing.feed_id = FEATURED_MP_ID
             existing.title = article_data["title"]
             existing.description = article_data["description"]
             existing.content = article_data["content"]
@@ -141,7 +142,7 @@ async def _run_add_featured_article_task(task_id: str, url: str):
         else:
             session.add(Article(
                 id=article_id,
-                mp_id=FEATURED_MP_ID,
+                feed_id=FEATURED_MP_ID,
                 title=article_data["title"],
                 description=article_data["description"],
                 content=article_data["content"],
@@ -169,8 +170,8 @@ async def _run_add_featured_article_task(task_id: str, url: str):
             "status": "success",
             "message": "精选文章添加成功" if created else "精选文章更新成功",
             "id": article_id,
-            "mp_id": FEATURED_MP_ID,
-            "mp_name": FEATURED_MP_NAME,
+            "id": FEATURED_MP_ID,
+            "name": FEATURED_MP_NAME,
             "title": article_data["title"],
             "created": created
         })
@@ -231,18 +232,23 @@ async def get_mps(
     session = DB.get_session()
     try:
         from core.models.feed import Feed
-        query = session.query(Feed).filter(Feed.id != FEATURED_MP_ID)
+        # 公众号列表只显示 platform=mp 的 feed (避免混入小红书订阅)。
+        # 老数据 platform 为 NULL 时 fallback 到 id 前缀扫描, 兜底兼容。
+        query = session.query(Feed).filter(
+            Feed.id != FEATURED_MP_ID,
+            (Feed.platform == PLATFORM_MP) | Feed.platform.is_(None),
+        ).filter(Feed.id.like("MP_WXS_%"))
         if kw:
-            query = query.filter(Feed.mp_name.ilike(f"%{kw}%"))
+            query = query.filter(Feed.name.ilike(f"%{kw}%"))
         if status is not None:
             query = query.filter(Feed.status == status)
         total = query.count()
         mps = query.order_by(Feed.created_at.desc()).limit(limit).offset(offset).all()
         mps_list = [{
                 "id": mp.id,
-                "mp_name": mp.mp_name,
-                "mp_cover": mp.mp_cover,
-                "mp_intro": mp.mp_intro,
+                "name": mp.name,
+                "cover": mp.cover,
+                "intro": mp.intro,
                 "status": mp.status,
                 "created_at": mp.created_at.isoformat() if mp.created_at else None
             } for mp in mps]
@@ -369,7 +375,7 @@ async def update_mps(
         def UpArt(mp):
             from core.wx import WxGather
             wx=WxGather().Model()
-            wx.get_Articles(mp.faker_id,Mps_id=mp.id,Mps_title=mp.mp_name,CallBack=UpdateArticle,start_page=start_page,MaxPage=end_page)
+            wx.get_Articles(mp.faker_id,Mps_id=mp.id,Mps_title=mp.name,CallBack=UpdateArticle,start_page=start_page,MaxPage=end_page)
             result=wx.articles
         import threading
         threading.Thread(target=UpArt,args=(mp,)).start()
@@ -467,23 +473,25 @@ async def add_mp(
         
         if existing_feed:
             # 更新现有记录
-            existing_feed.mp_name = mp_name
-            existing_feed.mp_cover = local_avatar_path
-            existing_feed.mp_intro = mp_intro
+            existing_feed.name = mp_name
+            existing_feed.cover = local_avatar_path
+            existing_feed.intro = mp_intro
             existing_feed.updated_at = now
+            existing_feed.platform = PLATFORM_MP  # 兜底: 老数据 platform 可能是 NULL
         else:
             # 创建新的Feed记录
             new_feed = Feed(
                 id=f"MP_WXS_{mpx_id}",
-                mp_name=mp_name,
-                mp_cover= local_avatar_path,
-                mp_intro=mp_intro,
+                name=mp_name,
+                cover= local_avatar_path,
+                intro=mp_intro,
                 status=1,  # 默认启用状态
                 created_at=now,
                 updated_at=now,
                 faker_id=mp_id,
                 update_time=0,
                 sync_time=0,
+                platform=PLATFORM_MP,
             )
             session.add(new_feed)
            
@@ -507,9 +515,9 @@ async def add_mp(
             
         return success_response({
             "id": feed.id,
-            "mp_name": feed.mp_name,
-            "mp_cover": feed.mp_cover,
-            "mp_intro": feed.mp_intro,
+            "name": feed.name,
+            "cover": feed.cover,
+            "intro": feed.intro,
             "status": feed.status,
             "faker_id":mp_id,
             "created_at": feed.created_at.isoformat() if feed.created_at else None
@@ -584,11 +592,11 @@ async def update_mp_status(
             )
         
         if mp_name is not None:
-            mp.mp_name = mp_name
+            mp.name = mp_name
         if mp_cover is not None:
-            mp.mp_cover = mp_cover
+            mp.cover = mp_cover
         if mp_intro is not None:
-            mp.mp_intro = mp_intro
+            mp.intro = mp_intro
         if status is not None:
             mp.status = status
         

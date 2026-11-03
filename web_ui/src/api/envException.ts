@@ -14,7 +14,7 @@ export interface EnvExceptionStats {
 export const getEnvExceptionStats = async (date?: string): Promise<EnvExceptionStats> => {
   try {
     const params = date ? { date } : {}
-    const response = await http.get('wx/env-exception/stats', { params })
+    const response = await http.get('/env-exception/stats', { params })
 
     // http拦截器已处理，response直接是data对象
     const data = response || {}
@@ -44,7 +44,7 @@ export const getEnvExceptionStats = async (date?: string): Promise<EnvExceptionS
  */
 export const getTodayStats = async (): Promise<EnvExceptionStats> => {
   try {
-    const response = await http.get('wx/env-exception/today')
+    const response = await http.get('/env-exception/today')
 
     // http拦截器已处理，response直接是data对象
     const data = response || {}

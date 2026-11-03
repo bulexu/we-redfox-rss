@@ -78,10 +78,30 @@ if __name__ == '__main__':
         from jobs.cascade_task_dispatcher import cascade_schedule_service
         cascade_schedule_service.start()
 
-    if  cfg.args.job =="True" and cfg.get("server.enable_job",False):
-        from jobs import start_job
-        threading.Thread(target=start_job,daemon=False).start()
-        print_success("已开启定时任务")
+    if cfg.args.job == "True" and cfg.get("server.enable_job", False):
+        try:
+            # 先确保平台任务存在，再由唯一的 start_job 统一读取、注册和分发。
+            from jobs.mps import (
+                ensure_bilibili_global_task,
+                ensure_douyin_global_task,
+                ensure_instagram_global_task,
+                ensure_tiktok_global_task,
+                ensure_x_global_task,
+                ensure_xhs_global_task,
+                ensure_youtube_global_task,
+                start_job,
+            )
+            ensure_xhs_global_task()
+            ensure_douyin_global_task()
+            ensure_bilibili_global_task()
+            ensure_x_global_task()
+            ensure_tiktok_global_task()
+            ensure_youtube_global_task()
+            ensure_instagram_global_task()
+            threading.Thread(target=start_job, daemon=False).start()
+            print_success("已开启统一定时调度")
+        except Exception as e:  # noqa: BLE001
+            print_warning(f"启动统一定时调度失败: {e}")
     else:
         print_warning("未开启定时任务")
     
@@ -91,13 +111,20 @@ if __name__ == '__main__':
         print_success("已开启自动修正文章任务")
     else:
         print_warning("未开启自动修正文章任务")
-    
+
     # 启动文章统计定时刷新任务
     if cfg.get("server.article_stats_refresh_enabled", False):  # 默认关闭
         from jobs.mps import start_article_stats_refresh
         start_article_stats_refresh()
     else:
         print_warning("文章统计定时刷新任务未启用")
+
+    # 启动飞书多维表自动写入；每张表使用自身 push_interval_hours。
+    try:
+        from jobs.lark_push import start_lark_push_scheduler
+        start_lark_push_scheduler()
+    except Exception as e:  # noqa: BLE001
+        print_warning(f"启动飞书自动推送扫描任务失败: {e}")
     
     print("启动服务器")
     AutoReload=cfg.get("server.auto_reload",False)

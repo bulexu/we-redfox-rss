@@ -1,5 +1,5 @@
 # 导入文章模型
-from .article import Article 
+from .article import Article
 # 导入订阅源模型
 from .feed import Feed
 # 导入用户模型
@@ -17,6 +17,8 @@ from .cascade_task_allocation import CascadeTaskAllocation
 # 导入过滤规则模型
 from .filter_rule import FilterRule
 # 导入飞书多维表配置模型
-from .lark_bitable import LarkBitable, ArticleLarkPush
+from .lark_bitable import LarkBitable
+# 导入标签模型
+from .tags import Tags
 # 导入基础模型
 from .base import *

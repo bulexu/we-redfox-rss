@@ -84,7 +84,7 @@ const columns = [
 ];
 
 const props = defineProps({
-  mp_id: {
+  feed_id: {
     type: String,
     default: '',
     required: false,
@@ -147,9 +147,9 @@ const handleDelete = async (record: any) => {
     cancelText: '取消',
     onOk: async () => {
       try {
-        // 调用删除API
+        // 调用删除API (后端仍使用 mp_id 作为 body 字段名)
         const response = await DeleteExportRecords({
-          mp_id: props.mp_id,
+          mp_id: props.feed_id,
           filename: record.path
         });
         console.log('删除API返回数据:', response);
@@ -173,7 +173,7 @@ const handleDelete = async (record: any) => {
 const fetchExportRecords = (): Promise<void> => {
   loading.value = true;
   visable.value = false;
-  return getExportRecords({ mp_id: props.mp_id })
+  return getExportRecords({ mp_id: props.feed_id })
     .then((response) => {
       console.log('API 返回数据:', response);
       // 确保 response 是数组或包含 data 字段的响应

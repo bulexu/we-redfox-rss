@@ -1,20 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import BasicLayout from '../components/Layout/BasicLayout.vue'
-import ExportRecords from '../views/ExportRecords.vue'
+import ExportRecords from '../views/feedops/ExportRecords.vue'
 import Login from '../views/Login.vue'
-import ArticleList from '../views/ArticleList.vue'
-import ChangePassword from '../views/ChangePassword.vue'
-import EditUser from '../views/EditUser.vue'
-import AddSubscription from '../views/AddSubscription.vue'
-import WeChatMpManagement from '../views/WeChatMpManagement.vue'
-import ConfigList from '../views/ConfigList.vue'
-import ConfigDetail from '../views/ConfigDetail.vue'
-import MessageTaskList from '../views/MessageTaskList.vue'
-import MessageTaskForm from '../views/MessageTaskForm.vue'
-import NovelReader from '../views/NovelReader.vue'
-import FilterRuleList from '../views/FilterRuleList.vue'
-import FilterRuleForm from '../views/FilterRuleForm.vue'
-import TaskQueueView from '../views/TaskQueueView.vue'
+import ArticleList from '../views/wechat/ArticleList.vue'
+import ChangePassword from '../views/system/ChangePassword.vue'
+import EditUser from '../views/system/EditUser.vue'
+import AddSubscription from '../views/wechat/AddSubscription.vue'
+import WeChatMpManagement from '../views/wechat/WeChatMpManagement.vue'
+import ConfigList from '../views/system/ConfigList.vue'
+import ConfigDetail from '../views/system/ConfigDetail.vue'
+import MessageTaskList from '../views/feedops/MessageTaskList.vue'
+import MessageTaskForm from '../views/feedops/MessageTaskForm.vue'
+import NovelReader from '../views/reader/NovelReader.vue'
+import FilterRuleList from '../views/feedops/FilterRuleList.vue'
+import FilterRuleForm from '../views/feedops/FilterRuleForm.vue'
+import TaskQueueView from '../views/feedops/TaskQueueView.vue'
 import ForgotPassword from '../views/ForgotPassword.vue'
 
 const routes = [
@@ -50,9 +50,10 @@ const routes = [
         path: 'wechat/mp',
         name: 'WeChatMpManagement',
         component: WeChatMpManagement,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage'] 
+          // 统一为 feed:manage — 跨平台共用 (公众号/小红书), 不再按平台拆。
+          permissions: ['feed:manage']
         }
       },
       
@@ -66,12 +67,12 @@ const routes = [
         }
       },
       {
-        path: 'export/records',
+        path: 'feedops/exports',
         name: 'ExportList',
         component: ExportRecords,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['config:view'] 
+          permissions: ['config:view']
         }
       },
       {
@@ -79,80 +80,80 @@ const routes = [
         name: 'ConfigDetail',
         component: ConfigDetail,
         props: true,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['config:view'] 
+          permissions: ['config:view']
         }
       },
       {
-        path: 'message-tasks',
+        path: 'feedops/message-tasks',
         name: 'MessageTaskList',
         component: MessageTaskList,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['message_task:view'] 
+          permissions: ['message_task:view']
         }
       },
       {
-        path: 'message-tasks/add',
+        path: 'feedops/message-tasks/add',
         name: 'MessageTaskAdd',
         component: MessageTaskForm,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['message_task:edit'] 
+          permissions: ['message_task:edit']
         }
       },
       {
-        path: 'message-tasks/edit/:id',
+        path: 'feedops/message-tasks/edit/:id',
         name: 'MessageTaskEdit',
         component: MessageTaskForm,
         props: true,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['message_task:edit'] 
+          permissions: ['message_task:edit']
         }
       },
       {
         path: 'sys-info',
         name: 'SysInfo',
-        component: () => import('@/views/SysInfo.vue'),
-        meta: { 
+        component: () => import('@/views/system/SysInfo.vue'),
+        meta: {
           requiresAuth: true,
-          permissions: ['admin'] 
+          permissions: ['admin']
         }
       },
       {
-        path: 'tags',
+        path: 'feedops/tags',
         name: 'TagList',
-        component: () => import('@/views/TagList.vue'),
-        meta: { 
+        component: () => import('@/views/feedops/TagList.vue'),
+        meta: {
           requiresAuth: true,
-          permissions: ['tag:view'] 
+          permissions: ['tag:view']
         }
       },
       {
-        path: 'tags/add',
+        path: 'feedops/tags/add',
         name: 'TagAdd',
-        component: () => import('@/views/TagForm.vue'),
-        meta: { 
+        component: () => import('@/views/feedops/TagForm.vue'),
+        meta: {
           requiresAuth: true,
-          permissions: ['tag:edit'] 
+          permissions: ['tag:edit']
         }
       },
       {
-        path: 'tags/edit/:id',
+        path: 'feedops/tags/edit/:id',
         name: 'TagEdit',
-        component: () => import('@/views/TagForm.vue'),
+        component: () => import('@/views/feedops/TagForm.vue'),
         props: true,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['tag:edit'] 
+          permissions: ['tag:edit']
         }
       },
       {
         path: 'access-keys',
         name: 'AccessKeyManagement',
-        component: () => import('@/views/AccessKeyManagement.vue'),
+        component: () => import('@/views/system/AccessKeyManagement.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['admin'] 
@@ -161,7 +162,7 @@ const routes = [
       {
         path: 'cascade',
         name: 'CascadeManagement',
-        component: () => import('@/views/CascadeManagement.vue'),
+        component: () => import('@/views/wechat/CascadeManagement.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['admin'] 
@@ -170,7 +171,7 @@ const routes = [
       {
         path: 'cascade/feed-status',
         name: 'CascadeFeedStatus',
-        component: () => import('@/views/CascadeFeedStatus.vue'),
+        component: () => import('@/views/wechat/CascadeFeedStatus.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['admin'] 
@@ -179,7 +180,7 @@ const routes = [
       {
         path: 'env-exception',
         name: 'EnvExceptionStats',
-        component: () => import('@/views/EnvExceptionStats.vue'),
+        component: () => import('@/views/system/EnvExceptionStats.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['admin']
@@ -188,42 +189,42 @@ const routes = [
       {
         path: 'redfox/logs',
         name: 'RedfoxLogs',
-        component: () => import('@/views/RedfoxLogs.vue'),
+        component: () => import('@/views/system/RedfoxLogs.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['admin']
         }
       },
       {
-        path: 'filter-rules',
+        path: 'feedops/filter-rules',
         name: 'FilterRuleList',
         component: FilterRuleList,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage'] 
+          permissions: ['filter_rule:view']
         }
       },
       {
-        path: 'filter-rules/add',
+        path: 'feedops/filter-rules/add',
         name: 'FilterRuleAdd',
         component: FilterRuleForm,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage'] 
+          permissions: ['filter_rule:edit']
         }
       },
       {
-        path: 'filter-rules/edit/:id',
+        path: 'feedops/filter-rules/edit/:id',
         name: 'FilterRuleEdit',
         component: FilterRuleForm,
         props: true,
-        meta: { 
+        meta: {
           requiresAuth: true,
-          permissions: ['wechat:manage'] 
+          permissions: ['filter_rule:edit']
         }
       },
       {
-        path: 'task-queue',
+        path: 'feedops/task-queue',
         name: 'TaskQueue',
         component: TaskQueueView,
         meta: {
@@ -232,22 +233,134 @@ const routes = [
         }
       },
       {
-        path: 'lark/bitables',
+        path: 'feedops/lark/bitables',
         name: 'LarkBitable',
-        component: () => import('@/views/LarkBitable.vue'),
+        component: () => import('@/views/feedops/LarkBitable.vue'),
+        meta: {
+          requiresAuth: true,
+          permissions: ['lark:view']
+        }
+      },
+      {
+        path: 'users',
+        name: 'UserManagement',
+        component: () => import('@/views/system/UserManagement.vue'),
         meta: {
           requiresAuth: true,
           permissions: ['admin']
         }
       },
       {
-        path: 'users',
-        name: 'UserManagement',
-        component: () => import('@/views/UserManagement.vue'),
-        meta: { 
+        path: 'xhs/feeds',
+        name: 'XhsFeeds',
+        component: () => import('@/views/xhs/XhsListDesktop.vue'),
+        meta: {
           requiresAuth: true,
-          permissions: ['admin'] 
+          // 统一为 feed:manage — 跨平台共用
+          permissions: ['feed:manage']
         }
+      },
+      {
+        path: 'xhs/subscriptions',
+        name: 'XhsSubscriptions',
+        component: () => import('@/views/xhs/XhsSubscriptions.vue'),
+        meta: {
+          requiresAuth: true,
+          // 统一为 feed:manage — 跨平台共用
+          permissions: ['feed:manage']
+        }
+      },
+      {
+        // 历史路由: 旧 XhsArticles 已合并到 XhsListDesktop 右侧面板
+        path: 'xhs/articles',
+        redirect: (to: any) => ({
+          path: '/xhs/feeds',
+          query: to.query,
+        }),
+      },
+      {
+        path: 'douyin/feeds',
+        name: 'DouyinFeeds',
+        component: () => import('@/views/douyin/DouyinListDesktop.vue'),
+        meta: {
+          requiresAuth: true,
+          permissions: ['feed:manage']
+        }
+      },
+      {
+        path: 'douyin/subscriptions',
+        name: 'DouyinSubscriptions',
+        component: () => import('@/views/douyin/DouyinSubscriptions.vue'),
+        meta: {
+          requiresAuth: true,
+          permissions: ['feed:manage']
+        }
+      },
+      {
+        path: 'bilibili/feeds',
+        name: 'BilibiliFeeds',
+        component: () => import('@/views/bilibili/BilibiliListDesktop.vue'),
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'bilibili/subscriptions',
+        name: 'BilibiliSubscriptions',
+        component: () => import('@/views/bilibili/BilibiliSubscriptions.vue'),
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'x/feeds',
+        name: 'XFeeds',
+        component: () => import('@/views/x/XListDesktop.vue'),
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'x/subscriptions',
+        name: 'XSubscriptions',
+        component: () => import('@/views/x/XSubscriptions.vue'),
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'tiktok/feeds',
+        name: 'TikTokFeeds',
+        component: () => import('@/views/overseas/KeywordListDesktop.vue'),
+        props: { platform:'tiktok', label:'TikTok', contentName:'视频' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'tiktok/subscriptions',
+        name: 'TikTokSubscriptions',
+        component: () => import('@/views/overseas/KeywordSubscriptions.vue'),
+        props: { platform:'tiktok', label:'TikTok', contentName:'视频', notice:'TikTok目前只支持关键词订阅，默认搜索美国区（US），按相关度返回；接口不提供 exactMatch 参数。', placeholder:'例如：AI / cycling' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'youtube/feeds',
+        name: 'YouTubeFeeds',
+        component: () => import('@/views/overseas/KeywordListDesktop.vue'),
+        props: { platform:'youtube', label:'YouTube', contentName:'视频' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'youtube/subscriptions',
+        name: 'YouTubeSubscriptions',
+        component: () => import('@/views/overseas/KeywordSubscriptions.vue'),
+        props: { platform:'youtube', label:'YouTube', contentName:'视频', notice:'YouTube目前只支持关键词订阅，通过 continuationToken 自动翻页；接口不提供 exactMatch 参数。', placeholder:'例如：AI tools / cycling' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'instagram/feeds',
+        name: 'InstagramFeeds',
+        component: () => import('@/views/overseas/KeywordListDesktop.vue'),
+        props: { platform:'instagram', label:'Instagram', contentName:'帖子' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
+      },
+      {
+        path: 'instagram/subscriptions',
+        name: 'InstagramSubscriptions',
+        component: () => import('@/views/overseas/KeywordSubscriptions.vue'),
+        props: { platform:'instagram', label:'Instagram', contentName:'帖子', notice:'Instagram目前只支持关键词订阅，可返回图片、视频和轮播帖子；接口不提供 exactMatch 参数。', placeholder:'例如：travel / cycling' },
+        meta: { requiresAuth: true, permissions: ['feed:manage'] }
       },
     ]
   },

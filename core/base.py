@@ -1,7 +1,7 @@
 import requests
 from core.ver import *
 try:
-    response = requests.get('https://api.github.com/repos/rachelos/we-mp-rss/releases/latest')
+    response = requests.get('https://api.github.com/repos/bulexu/we-redfox-rss/releases/latest')
     response.raise_for_status()  # 检查请求是否成功
     data = response.json()
     LATEST_VERSION = data.get('tag_name', '').replace('v', '')
@@ -13,7 +13,7 @@ except ValueError as e:
     LATEST_VERSION = ''
 
 #API接口前缀
-API_BASE = "/api/v1/wx"
+API_BASE = "/api/v1"
 
 #工作目录
 WORK_DIR="./work"

@@ -203,7 +203,7 @@ async def example_child_operations(api_key: str, api_secret: str):
     print("4. 上报任务结果...")
     result_data = [{
         "mp_id": "mp-uuid",
-        "mp_name": "测试公众号",
+        "name": "测试公众号",
         "article_count": 10,
         "success_count": 10,
         "timestamp": "2024-01-01T10:00:00"
@@ -267,7 +267,7 @@ async def example_complete_workflow():
             task_id = tasks['data'][0]['id']
             result = [{
                 "mp_id": "test-mp-id",
-                "mp_name": "测试公众号",
+                "name": "测试公众号",
                 "article_count": 5,
                 "success_count": 5,
                 "timestamp": "2024-01-01T10:00:00"

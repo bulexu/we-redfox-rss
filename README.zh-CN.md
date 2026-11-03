@@ -220,11 +220,11 @@ docker pull crpi-qp8hiqijfnilf93t.cn-hangzhou.personal.cr.aliyuncs.com/bulexu/we
 
 ```bash
 # 1. 拉取待补齐正文的文章清单(has_content=0 且未删除)
-GET  /api/v1/wx/articles/pending-content?limit=10&mp_id=MP_WXS_xxx
+GET  /api/v1/articles/pending-content?limit=10&mp_id=MP_WXS_xxx
 Authorization: AK-SK {ak}:{sk}
 
 # 2. 回写抓到的正文(或标记已删除)
-POST /api/v1/wx/articles/{article_id}/content
+POST /api/v1/articles/{article_id}/content
 Authorization: AK-SK {ak}:{sk}
 Content-Type: application/json
 {
@@ -301,9 +301,9 @@ Content-Type: application/json
 ```
 ┌──────────────┐    ┌────────────────────────────────────┐
 │  Vue 3 SPA   │    │  FastAPI (uvicorn, port 8001)      │
-│  (static/)   │◄──►│  ├─ /api/v1/wx  (article/feed/...) │
-└──────────────┘    │  ├─ /api/v1/wx/redfox  (stats/logs)│
-                    │  ├─ /api/v1/wx/lark   (bitables)   │
+│  (static/)   │◄──►│  ├─ /api/v1  (article/feed/...) │
+└──────────────┘    │  ├─ /api/v1/redfox  (stats/logs)│
+                    │  ├─ /api/v1/lark   (bitables)   │
                     │  └─ /story/api/gzh/data/... (redfox)│
                     └────────────┬───────────────────────┘
                                  │

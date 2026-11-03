@@ -3,6 +3,7 @@ import requests
 import json
 import re
 import time
+import base64
 from typing import Any, Dict, List
 from core.models import Feed
 from core.db import DB
@@ -191,23 +192,51 @@ class WxGather:
             session=self.session
             # 更新请求头
             headers = self.fix_header(url)
-            
+
             # 优先使用代理
             if self.proxy_enabled and self.deno_proxy_url:
                 text = self._proxy_request(url)
                 if text:
+                    if "当前环境异常，完成验证后即可继续访问" in text:
+                        self._record_env_exception(url)
+                        return ""
                     text = self.remove_common_html_elements(text)
                     return text
-            
+
             # 使用HTTP代理或直连
             proxies = self._get_proxies()
             r = session.get(url, headers=headers, proxies=proxies) #type: ignore
             if r.status_code == 200:
                 text = r.text
+                if "当前环境异常，完成验证后即可继续访问" in text:
+                    self._record_env_exception(url)
+                    return ""
                 text=self.remove_common_html_elements(text)
         except:
             pass
         return text
+
+    def _record_env_exception(self, url: str, mp_name: str = "", mp_id: str = "") -> None:
+        """把环境异常事件写入 Redis 统计（/env-exception 页面查询）。
+
+        同步 ``requests`` 路径检测到「当前环境异常」拦截页时调用。
+        Redis 写入失败只记日志,不抛异常 — 统计功能不应阻塞抓取主流程。
+        """
+        try:
+            from core.redis_client import record_env_exception
+
+            # 从 URL 的 __biz 参数反解 mp_id
+            if not mp_id:
+                match = re.search(r'[?&]__biz=([^&]+)', url)
+                if match:
+                    try:
+                        mp_id = "MP_WXS_" + base64.b64decode(match.group(1)).decode("utf-8")
+                    except Exception:
+                        mp_id = ""
+
+            record_env_exception(url=url, mp_name=mp_name, mp_id=mp_id)
+        except Exception as e:
+            print_warning(f"记录环境异常失败: {e}")
     def Wait(self,min=10,max=60,tips:str=""):
         wait=random.randint(min,max)
         print_warning(f"{tips}等待{wait}秒后继续...")
@@ -245,7 +274,7 @@ class WxGather:
                 
                 art={
                     "id":str(data['id']),  # 文章唯一标识ID
-                    "mp_id":data['mp_id'],  # 公众号ID
+                    "feed_id":data['mp_id'],  # 订阅源ID (公众号: MP_WXS_xxx / 小红书: XHS_KW_xxx, XHS_U_xxx)
                     "title":data['title'],  # 文章标题
                     "url":data['link'],  # 文章链接地址
                     "pic_url":data['cover'],  # 封面图片URL
@@ -418,10 +447,16 @@ class WxGather:
             rss=RSS()
             mp_id=""
             try:
-                mp_id=self.articles[0]['mp_id']
-            except:
+                # art dict 走 feed_id 键 (Article 模型对齐),  但 RSS 缓存仍按
+                # mp_id 维度清理,  兼容取值:  优先 feed_id,  兜底 mp_id。
+                mp_id = (
+                    self.articles[0].get("feed_id")
+                    or self.articles[0].get("mp_id")
+                    or ""
+                )
+            except Exception:
                 pass
-            rss.clear_cache(mp_id=mp_id)  
+            rss.clear_cache(mp_id=mp_id)
         
         # 输出执行时间统计
         if execution_time > 0:
@@ -454,6 +489,13 @@ class WxGather:
 
     def remove_common_html_elements(self, html_content: str) -> str:
         if "当前环境异常，完成验证后即可继续访问" in html_content:
+                # 写入 Redis 统计（/env-exception 页面查询）。此处通常无 URL 上下文,
+                # 仅做兜底计数 — 主路径的 mp 维度统计在 content_extract / _extract_from_page。
+                try:
+                    from core.redis_client import record_env_exception
+                    record_env_exception(url="", mp_name="", mp_id="")
+                except Exception as e:
+                    print_warning(f"记录环境异常失败: {e}")
                 Wait(tips="当前环境异常，完成验证后即可继续访问")
                 html_content=""
         else:

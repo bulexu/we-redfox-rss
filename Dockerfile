@@ -1,5 +1,5 @@
 # 请别再加前端编译了，前端编译非常占用工作流时间 ,可以 编译后复制到static目录再提交pull request
-FROM --platform=$BUILDPLATFORM ghcr.io/rachelos/base-full:latest AS runtime
+FROM crpi-qp8hiqijfnilf93t.cn-hangzhou.personal.cr.aliyuncs.com/bulexu/we-mp-rss:base-full AS runtime
 
 ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV INSTALL=True

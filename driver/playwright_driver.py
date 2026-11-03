@@ -123,28 +123,20 @@ class PlaywrightController:
             browser_launcher = getattr(self._playwright, self.browser_type)
 
             # 启动浏览器
-            # Docker 容器内 /dev/shm 默认只有 64MB，浏览器（尤其是 Chromium
-            # 多 tab / 渲染复杂页面）很容易撑爆导致子进程 SIGSEGV — 表现为
-            # Playwright 报 "Browser has been closed" 或直接生成 core dump。
-            #
-            # 通用容器兼容参数对三种浏览器都安全：FF/WebKit 会忽略不认识的 flag，
-            # 不会因此报错，所以一并无脑传即可。
             launch_options: Dict[str, Any] = {
                 "headless": self.headless,
-                "args": [
-                    "--no-sandbox",                # 以 root 跑容器时必需
-                    "--disable-dev-shm-usage",    # 改用 /tmp 替代 /dev/shm
-                    "--disable-setuid-sandbox",
-                ],
             }
 
-            # Chromium 专属 flag（反检测 + 稳定性）
+            # Chromium 专属参数，WebKit/Firefox 不支持这些 flag
             if self.browser_type == "chromium":
-                launch_options["args"].extend([
+                launch_options["args"] = [
+                    "--no-sandbox",               # 以 root 跑容器时必需
+                    "--disable-dev-shm-usage",     # 改用 /tmp 替代 /dev/shm
+                    "--disable-setuid-sandbox",
                     "--disable-blink-features=AutomationControlled",
                     "--disable-gpu",
                     "--disable-software-rasterizer",
-                ])
+                ]
 
             # 添加代理
             if self.proxy_url:

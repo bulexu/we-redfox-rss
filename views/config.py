@@ -7,6 +7,7 @@ class Config:
     home_template = f"{base_path}/templates/home.html"
     mps_template = f"{base_path}/templates/mps.html"
     xhs_template = f"{base_path}/templates/xhs.html"
+    platform_template = f"{base_path}/templates/platform.html"
     tags_template = f"{base_path}/templates/tags.html"
     tags_articles_template = f"{base_path}/templates/tags_articles.html"
     article_template = f"{base_path}/templates/article.html"

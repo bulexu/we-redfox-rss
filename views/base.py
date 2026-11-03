@@ -3,12 +3,168 @@ from fastapi import APIRouter, Request, Depends, Query, HTTPException
 from core.lax.template_parser import TemplateParser
 from fastapi.responses import HTMLResponse
 from core.db import DB
-from core.models.feed import Feed, PLATFORM_MP, PLATFORM_XHS, infer_platform_from_id
+from core.models.feed import (
+    Feed,
+    PLATFORM_MP,
+    PLATFORM_XHS,
+    PLATFORM_DY,
+    PLATFORM_BILI,
+    PLATFORM_X,
+    PLATFORM_TIKTOK,
+    PLATFORM_YOUTUBE,
+    PLATFORM_INSTAGRAM,
+    infer_platform_from_id,
+)
 from core.models.article import Article
 from driver.wxarticle import Web
 from datetime import datetime
 from core.models.tags import Tags
+from sqlalchemy import or_
 import json
+
+# ===== 平台元数据 (legacy views 站内共用) =====
+# feed.id 前缀,  与 core/models/feed.py 的 infer_platform_from_id 保持一致。
+# 新平台接入时在这里补一行即可让 /views/home 与平台列表页同步展示。
+PLATFORM_PREFIXES = {
+    PLATFORM_MP: ("MP_WXS_",),
+    PLATFORM_XHS: ("XHS_KW_", "XHS_U_"),
+    PLATFORM_DY: ("DY_KW_",),
+    PLATFORM_BILI: ("BILI_KW_",),
+    PLATFORM_X: ("X_KW_",),
+    PLATFORM_TIKTOK: ("TIKTOK_KW_",),
+    PLATFORM_YOUTUBE: ("YOUTUBE_KW_",),
+    PLATFORM_INSTAGRAM: ("INSTAGRAM_KW_",),
+}
+
+PLATFORM_LABELS = {
+    PLATFORM_MP: "公众号",
+    PLATFORM_XHS: "小红书",
+    PLATFORM_DY: "抖音",
+    PLATFORM_BILI: "B站",
+    PLATFORM_X: "X",
+    PLATFORM_TIKTOK: "TikTok",
+    PLATFORM_YOUTUBE: "YouTube",
+    PLATFORM_INSTAGRAM: "Instagram",
+}
+
+# 展示顺序: 公众号 / 小红书优先, 其余按接入先后排列。
+PLATFORM_ORDER = [
+    PLATFORM_MP,
+    PLATFORM_XHS,
+    PLATFORM_DY,
+    PLATFORM_BILI,
+    PLATFORM_X,
+    PLATFORM_TIKTOK,
+    PLATFORM_YOUTUBE,
+    PLATFORM_INSTAGRAM,
+]
+
+# 已有独立列表页的平台沿用旧地址,  其余走通用 /views/platform/{key}。
+_PLATFORM_VIEW_URLS = {
+    PLATFORM_MP: "/views/mps",
+    PLATFORM_XHS: "/views/xhs",
+}
+
+
+def get_platform_view_url(platform: str) -> str:
+    """平台列表页地址。"""
+    return _PLATFORM_VIEW_URLS.get(platform, f"/views/platform/{platform}")
+
+
+def get_platform_summary() -> list:
+    """各平台订阅数,  供首页平台 tab 展示。"""
+    session = DB.get_session()
+    summary = []
+    try:
+        for platform in PLATFORM_ORDER:
+            prefixes = PLATFORM_PREFIXES[platform]
+            id_filter = or_(*[Feed.id.like(f"{prefix}%") for prefix in prefixes])
+            feed_count = session.query(Feed).filter(
+                Feed.status == 1, id_filter
+            ).count()
+            summary.append({
+                "key": platform,
+                "label": PLATFORM_LABELS[platform],
+                "count": feed_count,
+                "url": get_platform_view_url(platform),
+            })
+    except Exception as e:
+        print(f"获取平台统计错误: {str(e)}")
+    finally:
+        session.close()
+    return summary
+
+
+def get_feeds_view(platform: str, page: int, limit: int):
+    """通用订阅列表。platform 传 None 时返回全部平台的最新订阅。
+
+    过滤规则与 apis/feeds.py 一致:  platform 列命中或为 NULL 老数据,
+    再用 feed.id 前缀兜底,  避免历史脏数据混入。
+    """
+    session = DB.get_session()
+    data = {}
+    try:
+        if platform:
+            prefixes = PLATFORM_PREFIXES.get(platform)
+            if not prefixes:
+                return {}
+            id_filter = or_(*[Feed.id.like(f"{prefix}%") for prefix in prefixes])
+            query = session.query(Feed).filter(
+                Feed.status == 1,
+                (Feed.platform == platform) | Feed.platform.is_(None),
+                id_filter,
+            )
+        else:
+            id_filter = or_(*[
+                Feed.id.like(f"{prefix}%")
+                for prefixes in PLATFORM_PREFIXES.values()
+                for prefix in prefixes
+            ])
+            query = session.query(Feed).filter(Feed.status == 1, id_filter)
+
+        total = query.count()
+        offset = (page - 1) * limit
+        feeds = (
+            query.order_by(Feed.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        feed_list = []
+        for feed in feeds:
+            article_count = session.query(Article).filter(
+                Article.feed_id == feed.id,
+                Article.status == 1,
+            ).count()
+            feed_platform = feed.platform or infer_platform_from_id(feed.id)
+            feed_list.append({
+                "id": feed.id,
+                "name": feed.name,
+                "cover": Web.get_image_url(feed.cover) if feed.cover else "",
+                "intro": feed.intro or "",
+                "kind": "keyword" if "_KW_" in feed.id else "account",
+                "platform": feed_platform,
+                "platform_label": PLATFORM_LABELS.get(feed_platform, feed_platform),
+                "article_count": article_count,
+                "sync_time": datetime.fromtimestamp(feed.sync_time).strftime('%Y-%m-%d %H:%M') if feed.sync_time else "未同步",
+            })
+
+        total_pages = (total + limit - 1) // limit
+        data = {
+            "feeds": feed_list,
+            "current_page": page,
+            "total_pages": total_pages,
+            "total_items": total,
+            "limit": limit,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+        }
+    except Exception as e:
+        print(f"获取订阅列表错误: {str(e)}")
+    finally:
+        session.close()
+    return data
 #获取公众号视图数据
 def get_mps_view(
     page: int ,

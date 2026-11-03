@@ -14,7 +14,12 @@
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <h3 style="text-align: center;width:100%;"><a href="/views/articles?mp_id={{feed.id}}">{{feed.name}}</a></h3>
         </div>
-        <div style="margin: 1rem 0;">
+        <div style="margin: 1rem 0; text-align: center;">
+            {% if feed.platform_label %}
+            <span style="background: #eeeff0; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem; margin-bottom: 0.4rem; display: inline-block;">
+                {{feed.platform_label}}
+            </span>
+            {% endif %}
             {% if feed.kind %}
             <span style="background: #eeeff0; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem; margin-right: 0.5rem;">
                 {% if feed.kind == 'keyword' %}🔑 关键词

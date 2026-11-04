@@ -26,6 +26,13 @@ class YouTubeClient(RedfoxClient):
             ),
         )
 
+    def get_transcript(self, video_url: str) -> Dict[str, Any]:
+        return self._sdk_call(
+            endpoint="/story/api/youtube/transcript",
+            request_payload={"videoUrl": video_url},
+            sdk_op=lambda: self._sdk.youtube.get_transcript(video_url=video_url),
+        )
+
     def iter_search_videos(self, keyword: str, max_pages: int = 5) -> Iterable[Dict[str, Any]]:
         token: Optional[str] = None
         seen: set[str] = set()
@@ -54,3 +61,7 @@ def search_videos(keyword: str, continuation_token: Optional[str] = None):
 
 def iter_search_videos(keyword: str, max_pages: int = 5):
     return _get_default_client().iter_search_videos(keyword, max_pages)
+
+
+def get_transcript(video_url: str):
+    return _get_default_client().get_transcript(video_url)

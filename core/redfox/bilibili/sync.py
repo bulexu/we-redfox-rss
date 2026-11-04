@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 
 from core.db import DB
 from core.models.article import Article
+from core.redfox.transcript import preserve_transcript
 from core.models.feed import Feed
 from core.print import print_info, print_warning
 
@@ -146,7 +147,7 @@ def _upsert_articles(session, feed_id: str, works: List[Dict[str, Any]]) -> int:
         ):
             value = work.get(field)
             if value not in (None, "", "[]"):
-                setattr(article, field, value)
+                setattr(article, field, preserve_transcript(article, field, value))
         article.has_content = 1 if (article.content or "").strip() else 0
         article.updated_at = now_ms
         article.updated_at_millis = now_ms
@@ -180,6 +181,8 @@ def do_job_bilibili(feed: Feed, is_test: bool = False) -> List[Dict[str, Any]]:
         db_feed.last_error = None
         db_feed.last_error_at = None
         session.commit()
+        from core.redfox.transcript import enqueue_transcripts
+        enqueue_transcripts(works)
         print_info(f"[bili] ok feed={feed.id} inserted={inserted}")
         return works
     except Exception as exc:

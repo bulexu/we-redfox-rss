@@ -103,7 +103,9 @@ def start_sync_content():
     Raises:
         无显式异常抛出，但内部可能打印警告或成功信息
     """
-    if not cfg.get("gather.content_auto_check",False):
+    from core.redfox.transcript import backfill_transcripts, video_conversion_enabled
+    content_enabled = cfg.get("gather.content_auto_check", False)
+    if not content_enabled and not video_conversion_enabled():
         print_warning("自动检查并同步文章内容功能未启用")
         return
     interval=int(cfg.get("gather.content_auto_interval",10)) # 每隔多少分钟
@@ -111,7 +113,10 @@ def start_sync_content():
     # ContentTaskQueue.clear_queue()  # 已注释：避免清空消息任务队列
     scheduler.clear_all_jobs()
     def do_sync():
-        ContentTaskQueue.add_task(fetch_articles_without_content, task_name="补抓文章内容")
+        if content_enabled:
+            ContentTaskQueue.add_task(fetch_articles_without_content, task_name="补抓文章内容")
+        if video_conversion_enabled():
+            ContentTaskQueue.add_task(backfill_transcripts, task_name="扫描待提取视频文案")
     job_id=scheduler.add_cron_job(do_sync,cron_expr=cron_exp)
     print_success(f"已添自动同步文章内容任务: {job_id}")
     scheduler.start()

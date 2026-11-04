@@ -301,6 +301,8 @@ def do_job_douyin(feed: Feed, is_test: bool = False) -> List[Dict[str, Any]]:
         db_feed.last_error = None
         db_feed.last_error_at = None
         session.commit()
+        from core.redfox.transcript import enqueue_transcripts
+        enqueue_transcripts(works)
         print_info(f"[dy] ok feed={feed.id} written={written}")
         return works
     except Exception as exc:  # RedfoxError 也统一走失败记录

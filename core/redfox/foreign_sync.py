@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List
 
 from core.db import DB
 from core.models.article import Article
+from core.redfox.transcript import enrich_direct_transcripts, preserve_transcript
 from core.models.feed import Feed
 from core.print import print_info, print_warning
 
@@ -52,7 +53,7 @@ def upsert_articles(session, feed_id: str, items: List[Dict[str, Any]]) -> int:
         ):
             value = item.get(field)
             if value not in (None, "", "[]"):
-                setattr(article, field, value)
+                setattr(article, field, preserve_transcript(article, field, value))
         article.has_content = 1 if (article.content or "").strip() else 0
         article.updated_at = now_ms
         article.updated_at_millis = now_ms
@@ -79,6 +80,7 @@ def run_keyword_job(
         last_publish_time = int(getattr(feed, "last_publish_time", 0) or 0)
         max_count = int(getattr(feed, "max_fetch_count", 20) or 20)
         items = fetcher(target, last_publish_time, max_count)
+        enrich_direct_transcripts(session, items)
         inserted = upsert_articles(session, feed.id, items)
         db_feed = session.query(Feed).filter(Feed.id == feed.id).first()
         if db_feed is None:
@@ -92,6 +94,8 @@ def run_keyword_job(
         db_feed.last_error = None
         db_feed.last_error_at = None
         session.commit()
+        from core.redfox.transcript import enqueue_transcripts
+        enqueue_transcripts(items)
         print_info(f"[{tag}] ok feed={feed.id} inserted={inserted}")
         return items
     except Exception as exc:

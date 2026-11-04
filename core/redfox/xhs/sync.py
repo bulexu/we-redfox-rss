@@ -357,6 +357,8 @@ def do_job_xhs(feed: Feed, is_test: bool = False) -> List[Dict[str, Any]]:
         db_feed.last_error_at = None
 
         session.commit()
+        from core.redfox.transcript import enqueue_transcripts
+        enqueue_transcripts(notes)
 
         print_info(
             f"[xhs] ok feed={feed.id} written={written} "

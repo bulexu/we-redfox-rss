@@ -2,6 +2,7 @@
   <a-menu
     mode="horizontal"
     :selected-keys="selectedTopKeys"
+    :popup-max-height="false"
     @menu-item-click="handleMenuClick"
   >
     <!-- ========== 平台选择 (下拉选择器) ========== -->

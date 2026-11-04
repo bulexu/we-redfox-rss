@@ -177,7 +177,6 @@
 </template>
 
 <script setup lang="ts">
-import translate from 'i18n-jsautotranslate'
 import { ref, computed, onMounted, watch } from 'vue'
 import { getSysInfo } from '@/api/sysInfo'
 import Navbar from '@/components/Layout/Navbar.vue'

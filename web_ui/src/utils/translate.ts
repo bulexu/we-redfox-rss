@@ -1,11 +1,9 @@
-import { trans as translate } from "./i18n/index.js";
-import { ref, watchEffect } from "vue";
+import translate from "i18n-jsautotranslate";
 
-const Has_Change = () => {
-  let _hash = hash(document.body.innerText);
-  console.log(get_hash(), _hash);
-  return get_hash() !== _hash;
-};
+// 原 translate.zvo.cn 免费接口已不可用（请求被重置），
+// 改用浏览器端 Edge 翻译通道，无需服务端接口。
+translate.service.use("client.edge");
+translate.language.setLocal("chinese_simplified");
 
 export const hash = (str: string): string => {
   let hash = 0;
@@ -29,10 +27,9 @@ export const translatePage = () => {
   const savedLanguage = localStorage.getItem("language");
   if (savedLanguage) {
     setTimeout(() => {
-      if (!Has_Change()) {
-        console.log("未改变");
-        return;
-      }
+      // 刷新后 node 缓存已清空，直接按已保存语种重新翻译。
+      // 不再用 body 文本 hash 判断，避免上次「翻译尚未返回就记录 hash」
+      // 导致刷新后被误判为未变化而跳过翻译。
       translate.changeLanguage(savedLanguage);
       set_hash();
     }, 1000); // 延时1000毫秒后执行语言切换

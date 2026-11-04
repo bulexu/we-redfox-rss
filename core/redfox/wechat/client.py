@@ -36,6 +36,7 @@ from ..base import (
     SUCCESS_CODE,
     _get_client_for,
 )
+from ..validation import extract_items
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +268,7 @@ class WechatClient(RedfoxClient):
                 offset=page * page_size,
                 sortType=sortType,
             )
-            items = data.get("list") or []
+            items = extract_items("wechat", data)
             if not items:
                 return
             yield from items

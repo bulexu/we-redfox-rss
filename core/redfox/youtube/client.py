@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, Optional
 
 from ..base import RedfoxClient, RedfoxError, _get_client_for
+from ..validation import extract_items
 
 SEARCH_VIDEOS_PATH = "/story/api/youtube/searchVideo"
 PAGE_SIZE = 20
@@ -30,8 +31,8 @@ class YouTubeClient(RedfoxClient):
         seen: set[str] = set()
         for _ in range(max(1, int(max_pages))):
             data = self.search_videos(keyword, token) or {}
-            items = data.get("videos") or data.get("items") or data.get("list") or []
-            if not isinstance(items, list) or not items:
+            items = extract_items("youtube", data)
+            if not items:
                 return
             for item in items:
                 if isinstance(item, dict):

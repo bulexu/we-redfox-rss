@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from core.log import logger
 from core.print import print_error, print_info, print_success, print_warning
 from core.redfox import RedfoxError, query_work_list
+from core.redfox.validation import extract_items
 from core.wx.base import WxGather
 
 if TYPE_CHECKING:
@@ -199,7 +200,7 @@ class MpsWeb(WxGather):
                 print_error(f"redfox 拉取 {Mps_title} 作品列表异常: {e}")
                 break
 
-            items = data.get("list") or []
+            items = extract_items("wechat", data)
             if not items:
                 print_info(f"[{Mps_title}] 第 {page + 1} 页无数据，提前结束")
                 break

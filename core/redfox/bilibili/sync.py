@@ -14,6 +14,7 @@ from core.models.article import Article
 from core.models.feed import Feed
 from core.print import print_info, print_warning
 
+from ..validation import checked_item
 from .client import ORDER_LATEST, PAGE_SIZE, iter_search_works, parse_publish_time
 
 AUTO_DISABLE_ERROR_THRESHOLD = 5
@@ -34,7 +35,7 @@ def _as_int(value: Any) -> int:
 
 
 def _clean_text(value: Any) -> str:
-    """去掉广域库标题里的高亮标签 (如 ``<em class="keyword">``) 并反转义。"""
+    """去掉搜索结果标题里的高亮标签 (如 ``<em class="keyword">``) 并反转义。"""
     text = html.unescape(str(value or ""))
     return re.sub(r"<[^>]+>", "", text).strip()
 
@@ -79,7 +80,7 @@ def _normalize_work(work: Dict[str, Any]) -> Dict[str, Any]:
         "tags": tags,
         "author_avatar": _normalize_cover(work.get("avatar")),
     }
-    return {
+    item = {
         "id": bvid, "title": title[:1000], "content": description,
         "description": description, "pic_url": pic_url[:500] or None,
         "url": url[:500],
@@ -94,6 +95,7 @@ def _normalize_work(work: Dict[str, Any]) -> Dict[str, Any]:
         "read_count": _as_int(work.get("viewNum") if work.get("viewNum") is not None else work.get("playCount")),
         "share_count": _as_int(work.get("shareCount")),
     }
+    return checked_item("bilibili", work, item)
 
 
 def _fetch_works(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:

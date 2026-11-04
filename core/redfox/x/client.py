@@ -5,6 +5,7 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Dict, Iterable, Optional
 
 from ..base import RedfoxClient, RedfoxError, _get_client_for
+from ..validation import extract_items
 
 SEARCH_TWEETS_PATH = "/story/api/x/search"
 PAGE_SIZE = 20
@@ -44,8 +45,8 @@ class XClient(RedfoxClient):
         seen_cursors: set[str] = set()
         for _ in range(max(1, int(max_pages))):
             data = self.search_tweets(keyword, search_type=search_type, cursor=cursor) or {}
-            tweets = data.get("tweets") or data.get("list") or data.get("items") or []
-            if not isinstance(tweets, list) or not tweets:
+            tweets = extract_items("x", data)
+            if not tweets:
                 return
             for tweet in tweets:
                 if isinstance(tweet, dict):

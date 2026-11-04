@@ -14,6 +14,7 @@ from core.models.article import Article
 from core.models.feed import Feed
 from core.print import print_info, print_warning
 
+from ..validation import checked_item
 from .client import PAGE_SIZE, iter_search_articles, parse_work_publish_time
 
 
@@ -138,7 +139,7 @@ def _normalize_work(work: Dict[str, Any]) -> Dict[str, Any]:
         "duration": _as_int(_pick(work, "duration", "video.duration", default=0)),
     }
 
-    return {
+    item = {
         "id": raw_work_id,
         "title": title[:1000],
         "content": description,
@@ -156,6 +157,7 @@ def _normalize_work(work: Dict[str, Any]) -> Dict[str, Any]:
         "read_count": _as_int(_pick(work, "workReadedCount", "viewCount", "playCount", "statistics.play_count")),
         "share_count": _as_int(_pick(work, "workSharedCount", "sharedCount", "shareCount", "statistics.share_count")),
     }
+    return checked_item("douyin", work, item)
 
 
 def _fetch_works(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:

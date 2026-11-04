@@ -4,7 +4,7 @@
 ``do_job`` (公众号) 对称。  流程:
 
   1. 根据 ``feed.id`` 前缀识别 kind:
-     * ``XHS_KW_<keyword>``  → 走广域库 ``iter_search_articles(keyword, sort='最新')``
+     * ``XHS_KW_<keyword>``  → 走 ``iter_search_articles(keyword, sort='最新')``
      * ``XHS_U_<userId>``    → 走 ``iter_user_works(user_id, sort_type='2')``
   2. 翻页直到 (a) ``publish_time <= feed.last_publish_time`` 早停,
      (b) 已抓 ``feed.max_fetch_count`` 条,  (c) ``hasMore=false``。
@@ -35,6 +35,7 @@ from core.models.article import Article
 from core.models.feed import Feed
 from core.print import print_error, print_info, print_warning
 
+from ..validation import checked_item
 from .client import (
     PAGE_SIZE,
     SORT_LATEST,
@@ -99,56 +100,74 @@ def _as_int(value: Any) -> int:
         return 0
 
 
-def _first(note: Dict[str, Any], *keys: str) -> Any:
-    """按优先级取第一个非空字段,  兼容广域库与旧 SDK 两种字段风格。"""
-    for key in keys:
-        value = note.get(key)
-        if value not in (None, ""):
-            return value
-    return None
-
-
 def _normalize_image_url(url: Any) -> str:
     # Redfox 偶尔返回要求 CDN 输出 HEIF 的图片链接。Chrome/Edge 在 Windows
     # 上通常无法直接渲染 HEIF，而小红书 CDN 接受相同链接输出 WebP。
     return str(url or "").replace("format/heif", "format/webp")
 
 
+def _normalize_work_type(note: Dict[str, Any]) -> tuple[str, int]:
+    """``workType`` → (原始类型, Article.show_type)。
+
+    ``workType`` 为 ``normal`` / ``video``;  show_type 语义见
+    ``core/models/article.py``:  0=图文,  5=视频。
+    """
+    raw = str(note.get("workType") or "").strip().lower()
+    if raw == "video":
+        return raw, 5
+    return raw, 0
+
+
 def _normalize_note(note: Dict[str, Any]) -> Dict[str, Any]:
     """把 redfox note dict 拆成 ``Article.__init__`` 可吃的 kwargs。
 
+    字段对应通用接口 ``/story/api/xhsUser/searchArticle``:
+    ``workId`` / ``workTitle`` / ``workDesc`` / ``coverUrl`` / ``workUrl`` /
+    ``workPublishTime`` / ``accountNickname`` / ``accountUserid`` /
+    ``workLikedCount`` / ``workCommentsCount`` / ``workCollectedCount`` /
+    ``workSharedCount`` / ``workType`` / ``accountType``。
+
     只做字段映射 + 类型规范化,  不入库。  字段语义详见 ``do_job_xhs`` 顶部。
     """
-    work_id = str(_first(note, "noteId", "workId") or "").strip()
+    work_id = str(note.get("workId") or "").strip()
     if not work_id:
         return {}
 
-    cover_url = _normalize_image_url(_first(note, "coverImage", "coverUrl"))
-    # 广域库返回 picUrls 全量图片; 旧 SDK 只有封面。
-    raw_pics = note.get("picUrls") if isinstance(note.get("picUrls"), list) else []
-    pic_urls = [_normalize_image_url(p) for p in raw_pics if p]
-    if not pic_urls and cover_url:
-        pic_urls = [cover_url]
-    image_urls_json = json.dumps(pic_urls, ensure_ascii=False) if pic_urls else "[]"
+    cover_url = _normalize_image_url(note.get("coverUrl"))
+    # 通用接口只返回封面, 没有全量图片列表。
+    image_urls_json = json.dumps([cover_url], ensure_ascii=False) if cover_url else "[]"
 
-    content = str(_first(note, "noteDesc", "workDesc") or "")
-
-    return {
-        "id": work_id,
-        "title": (str(_first(note, "noteTitle", "workTitle") or ""))[:1000],
-        "content": content,
-        "pic_url": cover_url or None,
-        "url": str(_first(note, "noteUrl", "workUrl") or ""),
-        "publish_time": parse_work_publish_time(_first(note, "releaseTime", "workPublishTime") or ""),
-        "author": (str(_first(note, "authorName", "accountNickname") or ""))[:255] or None,
-        "author_id": (str(_first(note, "authorUid", "accountUserid") or ""))[:255] or None,
-        "image_urls": image_urls_json,
-        "liked_count": _as_int(_first(note, "thumbCount", "workLikedCount")),
-        "comments_count": _as_int(_first(note, "replyCount", "workCommentsCount")),
-        "collected_count": _as_int(_first(note, "favoriteCount", "workCollectedCount")),
-        "read_count": _as_int(_first(note, "workReadedCount")),
-        "share_count": _as_int(_first(note, "forwardCount", "workSharedCount")),
+    # workDesc 就是作品正文/介绍 (可能只是一串话题标签)。
+    content = str(note.get("workDesc") or "")
+    work_type, show_type = _normalize_work_type(note)
+    extinfo = {
+        "platform": "xhs",
+        "work_id": work_id,
+        "work_type": work_type,
+        # accountType 是内容分类 (如 "美味佳肴"), 不是账号 ID。
+        "account_type": str(note.get("accountType") or ""),
     }
+
+    item = {
+        "id": work_id,
+        "title": (str(note.get("workTitle") or ""))[:1000],
+        "content": content,
+        "description": content,
+        "pic_url": cover_url or None,
+        "url": str(note.get("workUrl") or ""),
+        "publish_time": parse_work_publish_time(note.get("workPublishTime") or ""),
+        "author": (str(note.get("accountNickname") or ""))[:255] or None,
+        "author_id": (str(note.get("accountUserid") or ""))[:255] or None,
+        "image_urls": image_urls_json,
+        "extinfo": json.dumps(extinfo, ensure_ascii=False),
+        "show_type": show_type,
+        "liked_count": _as_int(note.get("workLikedCount")),
+        "comments_count": _as_int(note.get("workCommentsCount")),
+        "collected_count": _as_int(note.get("workCollectedCount")),
+        "read_count": _as_int(note.get("workReadedCount")),
+        "share_count": _as_int(note.get("workSharedCount")),
+    }
+    return checked_item("xhs", note, item)
 
 
 # ---------- 增量抓取主循环 ----------
@@ -236,12 +255,15 @@ def _upsert_articles(session, feed_id: str, normalized_notes: List[Dict[str, Any
                 feed_id=feed_id,
                 title=n.get("title"),
                 content=n.get("content"),
+                description=n.get("description"),
                 pic_url=n.get("pic_url"),
                 url=n.get("url"),
                 publish_time=n.get("publish_time"),
                 author=n.get("author"),
                 author_id=n.get("author_id"),
                 image_urls=n.get("image_urls"),
+                extinfo=n.get("extinfo"),
+                show_type=n.get("show_type", 0),
                 liked_count=n.get("liked_count") or 0,
                 comments_count=n.get("comments_count") or 0,
                 collected_count=n.get("collected_count") or 0,

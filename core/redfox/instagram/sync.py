@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from core.models.feed import Feed
 from core.redfox.foreign_sync import AUTO_DISABLE_ERROR_THRESHOLD, as_int, run_keyword_job
+from core.redfox.validation import checked_item
 
 from .client import PAGE_SIZE, iter_search_posts
 
@@ -52,7 +53,7 @@ def _normalize_post(post: Dict[str, Any]) -> Dict[str, Any]:
         "followers": as_int(user.get("followerCount")),
         "avatar": user.get("profilePicUrl") or "", "verified": bool(user.get("isVerified")),
     }
-    return {
+    item = {
         "id": f"instagram_{media_id}", "title": caption[:280] or "(无标题)",
         "content": caption, "description": caption,
         # Instagram CDN URL 带有较长的动态签名参数，不能按 500 字符截断。
@@ -67,6 +68,7 @@ def _normalize_post(post: Dict[str, Any]) -> Dict[str, Any]:
         "read_count": as_int(post.get("playCount")),
         "share_count": as_int(post.get("shareCount")),
     }
+    return checked_item("instagram", post, item)
 
 
 def _fetch_posts(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:

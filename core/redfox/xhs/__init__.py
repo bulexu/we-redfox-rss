@@ -52,14 +52,11 @@ _ensure_redfox_stub()
 
 from .client import (
     GET_USER_WORKS_PATH,
-    NOTE_TIME_ANY,
-    NOTE_TYPE_ANY,
     PAGE_SIZE,
     SORT_DEFAULT,
     SORT_LATEST,
     RedfoxError,
     SEARCH_ARTICLES_PATH,
-    SEARCH_ARTICLES_PATH_LEGACY,
     SEARCH_USERS_PATH,
     XhsClient,
     get_user_works,
@@ -98,11 +95,8 @@ __all__ = [
     "AUTO_DISABLE_ERROR_THRESHOLD",
     # 路径 / 通用常量
     "SEARCH_ARTICLES_PATH",
-    "SEARCH_ARTICLES_PATH_LEGACY",
     "SEARCH_USERS_PATH",
     "GET_USER_WORKS_PATH",
-    "NOTE_TYPE_ANY",
-    "NOTE_TIME_ANY",
     "SORT_DEFAULT",
     "SORT_LATEST",
     "PAGE_SIZE",

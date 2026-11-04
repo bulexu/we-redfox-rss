@@ -1,14 +1,14 @@
-"""哔哩哔哩 Redfox 广域库接口封装。"""
+"""哔哩哔哩 Redfox 接口封装。"""
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, Iterable
 
-from ..base import RedfoxClient, RedfoxError, _get_client_for, is_enterprise_account
+from ..base import RedfoxClient, RedfoxError, _get_client_for
+from ..validation import extract_items
 
-SEARCH_WORKS_PATH = "/story/api/bili/search"                 # 广域库 (企业账号)
-SEARCH_WORKS_PATH_LEGACY = "/story/api/bili/data/workSearch"  # 旧接口 (非企业账号)
-PAGE_SIZE = 20  # 广域库单页固定 20 条
+SEARCH_WORKS_PATH = "/story/api/bili/data/workSearch"  # 关键词搜索作品 (通用接口)
+PAGE_SIZE = 20  # 通用接口单页固定 20 条
 
 # 排序方式: 不填为综合, pubdate 最新发布。
 ORDER_DEFAULT = ""
@@ -28,19 +28,6 @@ class BilibiliClient(RedfoxClient):
         if order not in VALID_ORDERS:
             raise RedfoxError(f"search_works: 不支持的排序方式 {order!r}")
 
-        if is_enterprise_account():
-            payload: Dict[str, Any] = {"keyword": kw, "page": str(page)}
-            if order:
-                payload["order"] = order
-            return self._sdk_call(
-                endpoint=SEARCH_WORKS_PATH,
-                request_payload=payload,
-                # SDK 便捷方法未覆盖该搜索接口，直接通过 SDK 底层 post 发送；
-                # 鉴权、重试和响应解包仍由官方 SDK 负责。
-                sdk_op=lambda: self._sdk.post(SEARCH_WORKS_PATH, data=payload),
-            )
-
-        # 非企业账号不支持广域库接口，回落到旧接口。
         payload = {
             "keyword": kw,
             "exactMatch": False,
@@ -49,17 +36,16 @@ class BilibiliClient(RedfoxClient):
             "order": LEGACY_ORDER_MAP.get(order, "time"),
         }
         return self._sdk_call(
-            endpoint=SEARCH_WORKS_PATH_LEGACY,
+            endpoint=SEARCH_WORKS_PATH,
             request_payload=payload,
-            sdk_op=lambda: self._sdk.post(SEARCH_WORKS_PATH_LEGACY, data=payload),
+            sdk_op=lambda: self._sdk.post(SEARCH_WORKS_PATH, data=payload),
         )
 
     def iter_search_works(self, keyword: str, max_pages: int = 5, order: str = ORDER_LATEST) -> Iterable[Dict[str, Any]]:
         for page in range(1, max(1, int(max_pages)) + 1):
             data = self.search_works(keyword, page, order) or {}
-            # 广域库返回 opusInfoList；旧接口返回 workList/total。
-            items = data.get("opusInfoList") or data.get("workList") or []
-            if not isinstance(items, list) or not items:
+            items = extract_items("bilibili", data)
+            if not items:
                 return
             for item in items:
                 if isinstance(item, dict):

@@ -12,6 +12,7 @@ from core.models.article import Article
 from core.models.feed import Feed
 from core.print import print_info, print_warning
 
+from ..validation import checked_item
 from .client import PAGE_SIZE, iter_search_tweets, parse_publish_time
 
 AUTO_DISABLE_ERROR_THRESHOLD = 5
@@ -59,7 +60,7 @@ def _normalize_tweet(tweet: Dict[str, Any]) -> Dict[str, Any]:
         "location": user.get("location") or "", "avatar": user.get("avatar") or "",
         "medias": medias,
     }
-    return {
+    item = {
         "id": f"x_{tweet_id}", "title": (text[:280] or "(无正文)"),
         "content": text, "description": text,
         "pic_url": image_urls[0][:500] if image_urls else None,
@@ -74,6 +75,7 @@ def _normalize_tweet(tweet: Dict[str, Any]) -> Dict[str, Any]:
         "read_count": _as_int(tweet.get("viewCount")),
         "share_count": _as_int(tweet.get("retweetCount")),
     }
+    return checked_item("x", tweet, item)
 
 
 def _fetch_tweets(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:

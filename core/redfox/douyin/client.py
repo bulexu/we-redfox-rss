@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, Iterable
 
 from ..base import PAGE_SIZE, RedfoxClient, RedfoxError, _get_client_for
+from ..validation import extract_items
 
 
 SEARCH_ARTICLES_PATH = "/story/api/dy/data/searchWork"
@@ -62,7 +63,7 @@ class DouyinClient(RedfoxClient):
                 start_date=start_date,
                 end_date=end_date,
             ) or {}
-            items = data.get("list") or data.get("works") or data.get("articles") or []
+            items = extract_items("douyin", data)
             if not items:
                 return
             yield from items

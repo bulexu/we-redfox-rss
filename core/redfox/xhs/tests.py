@@ -127,6 +127,8 @@ def test_normalize() -> bool:
     assert n["id"] == "kw1_0"
     assert n["title"] == "测试标题 0"
     assert n["content"] == "测试正文 0,  本地 stub 数据"
+    # 普通接口的 workDesc 同时作为 description 落库
+    assert n["description"] == "测试正文 0,  本地 stub 数据"
     assert n["author"] == "测试昵称"
     assert n["author_id"] == "test_user"
     assert n["liked_count"] == 100
@@ -135,9 +137,22 @@ def test_normalize() -> bool:
     assert n["read_count"] == 1000
     assert n["share_count"] == 5
     assert n["publish_time"] > 0
-    # image_urls 是 JSON 字符串,  单元素列表
+    # workType=normal → show_type=0 (图文)
+    assert n["show_type"] == 0
     import json as _json
+    ext = _json.loads(n["extinfo"])
+    assert ext["platform"] == "xhs"
+    assert ext["work_id"] == "kw1_0"
+    assert ext["work_type"] == "normal"
+    # image_urls 是 JSON 字符串,  单元素列表
     assert _json.loads(n["image_urls"]) == ["https://example.com/cover_0.jpg"]
+
+    # workType=video → show_type=5 (视频)
+    video_note = dict(notes[0], workType="video", accountType="美味佳肴")
+    v = _normalize_note(video_note)
+    assert v["show_type"] == 5
+    assert _json.loads(v["extinfo"])["account_type"] == "美味佳肴"
+
     print("  ✓ _normalize_note")
     return True
 
@@ -184,6 +199,11 @@ def test_upsert_metrics_only() -> bool:
         rows = session.query(Article).filter(Article.feed_id == feed_id).all()
         assert len(rows) == 3, len(rows)
 
+        # 新增时 description / show_type 应落库
+        for a in rows:
+            assert a.description and "正文" in a.description, a.description
+            assert a.show_type == 0, a.show_type
+
         # 记下原始 title
         original_titles = {a.id: a.title for a in rows}
 
@@ -221,6 +241,12 @@ def test_upsert_metrics_only() -> bool:
             # content 不应被 metrics-only UPSERT 覆盖
             assert "不应入库" not in (a.content or ""), (
                 f"{a.id}: content 不应被 metrics UPSERT 覆盖: {a.content!r}"
+            )
+            assert "不应入库" not in (a.description or ""), (
+                f"{a.id}: description 不应被 metrics UPSERT 覆盖: {a.description!r}"
+            )
+            assert a.show_type == 0, (
+                f"{a.id}: show_type 不应被 metrics UPSERT 覆盖: {a.show_type!r}"
             )
             assert a.author != "新昵称", (
                 f"{a.id}: author 不应被 metrics UPSERT 覆盖"

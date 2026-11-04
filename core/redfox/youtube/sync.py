@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from core.models.feed import Feed
 from core.redfox.foreign_sync import AUTO_DISABLE_ERROR_THRESHOLD, as_int, run_keyword_job
+from core.redfox.validation import checked_item
 
 from .client import PAGE_SIZE, iter_search_videos
 
@@ -66,7 +67,7 @@ def _normalize_video(video: Dict[str, Any]) -> Dict[str, Any]:
         "duration": video.get("duration") or "",
         "thumbnails": thumbnails,
     }
-    return {
+    item = {
         "id": f"youtube_{video_id}", "title": title[:1000] or description[:280] or "(无标题)",
         "content": description, "description": description,
         "pic_url": cover[:500] or None,
@@ -81,6 +82,7 @@ def _normalize_video(video: Dict[str, Any]) -> Dict[str, Any]:
         "read_count": as_int(video.get("viewCount")),
         "share_count": 0,
     }
+    return checked_item("youtube", video, item)
 
 
 def _fetch_videos(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:

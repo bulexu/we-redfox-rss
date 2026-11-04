@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable
 
 from ..base import RedfoxClient, RedfoxError, _get_client_for
+from ..validation import extract_items
 
 SEARCH_VIDEOS_PATH = "/story/api/tiktok/ability/searchVideo"
 PAGE_SIZE = 20
@@ -32,12 +33,7 @@ class TikTokClient(RedfoxClient):
     def iter_search_videos(self, keyword: str, max_pages: int = 5, region: str = "US") -> Iterable[Dict[str, Any]]:
         for page in range(max(1, int(max_pages))):
             data = self.search_videos(keyword, offset=page * PAGE_SIZE, count=PAGE_SIZE, region=region)
-            if isinstance(data, list):
-                items = data
-            elif isinstance(data, dict):
-                items = data.get("list") or data.get("items") or data.get("videos") or []
-            else:
-                items = []
+            items = extract_items("tiktok", data)
             if not items:
                 return
             for item in items:

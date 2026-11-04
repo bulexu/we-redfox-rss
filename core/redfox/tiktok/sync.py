@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 from core.models.feed import Feed
 from core.redfox.foreign_sync import AUTO_DISABLE_ERROR_THRESHOLD, as_int, run_keyword_job
+from core.redfox.validation import checked_item
 
 from .client import PAGE_SIZE, iter_search_videos
 
@@ -43,7 +44,7 @@ def _normalize_video(work: Dict[str, Any]) -> Dict[str, Any]:
         "avatar": author.get("avatarImage") or "",
         "repost_count": as_int(stats.get("repostTotal")),
     }
-    return {
+    item = {
         "id": f"tiktok_{work_id}", "title": content[:280] or "(无标题)",
         "content": content, "description": content,
         "pic_url": cover[:500] or None, "url": url[:500],
@@ -57,6 +58,7 @@ def _normalize_video(work: Dict[str, Any]) -> Dict[str, Any]:
         "read_count": as_int(stats.get("viewCount")),
         "share_count": as_int(stats.get("shareTotal")),
     }
+    return checked_item("tiktok", work, item)
 
 
 def _fetch_videos(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:

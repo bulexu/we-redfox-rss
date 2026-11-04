@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, Optional
 
 from ..base import RedfoxClient, RedfoxError, _get_client_for
+from ..validation import extract_items
 
 SEARCH_POSTS_PATH = "/story/api/ins/search"
 PAGE_SIZE = 20
@@ -30,8 +31,8 @@ class InstagramClient(RedfoxClient):
         seen: set[str] = set()
         for _ in range(max(1, int(max_pages))):
             data = self.search_posts(keyword, token) or {}
-            items = data.get("items") or data.get("posts") or data.get("list") or []
-            if not isinstance(items, list) or not items:
+            items = extract_items("instagram", data)
+            if not items:
                 return
             for item in items:
                 if isinstance(item, dict):

@@ -156,3 +156,69 @@ Content-Type: application/json
 
 可以。数据库里 `Feed.faker_id` 字段直接保存的是 redfox 的 `bizInfo`
 （Base64 字符串），采集时按 `bizInfo` 直接查询，无需额外转换。
+
+
+## 平台字段映射与 ArticleSchema
+
+`core/redfox/schema.py` 定义统一的 Pydantic `ArticleSchema`。各平台的
+`client.py` 内置 `normalize_item(raw) -> ArticleSchema | None`，将不同接口的
+作品字段转换为同一模型。缺少作品 ID 时返回 `None`，由客户端跳过。
+
+模型包含 ID、标题、正文、描述、封面、作品链接、秒级发布时间、作者信息、
+互动数和展示类型。`image_urls` 使用字符串列表，`extinfo` 使用字典，
+不同平台的附加信息保存在 `extinfo`。模型拒绝未知顶层字段并校验字段类型。
+
+所有作品迭代器（包括小红书账号作品、公众号作品）均返回
+`Iterable[ArticleSchema]`。底层单页搜索方法保留原始响应和分页元数据，
+只由客户端负责列表提取、页码/游标翻页和作品映射。
+
+```python
+from core.redfox.douyin.client import iter_search_articles
+
+for article in iter_search_articles("关键词", max_pages=2):
+    print(article.id, article.author, article.extinfo)
+    record = article.to_record()  # 入库边界：图片和扩展信息序列化为 JSON 字符串
+```
+
+`sync.py` 消费客户端模型，调用 `to_record()` 进入现有增量筛选、字幕处理与
+入库流程，不再读取平台原始字段。任务返回值仍为历史字段字典，兼容现有
+API、通知和字幕队列。原 `sync._normalize_*` 仅作为旧代码的序列化适配入口保留。
+
+抖音广域库与企业实时接口输出同一个 `ArticleSchema`：兼容 `opusUrl/videoUrl`、
+`authorUniqueId/authorAccount` 和 `authorAvatarUrl/authorAvatar`，保留图文图片、
+标签和企业附加字段。`videoType` 的字符串与整数均受支持，`68` 映射为图文。
+时长在 `extinfo.duration` 中保留接口的毫秒单位。
+
+公众号 `normalize_item(raw)` 同样返回统一模型；历史采集器通过
+`normalize_fillback_item(raw, mp_id)` 转换为 FillBack 格式，保留原有正文采集流程。
+
+
+### 企业小红书关键词实时搜索
+
+设置 `REDFOX_ENTERPRISE=True` 后，关键词搜索调用
+`POST /story/api/xhs/ability/searchWork`，发送 `note_type=不限`、
+`noteTime=不限`、从 1 开始的 `page`，并沿用调用方选择的中文排序值
+（增量同步默认为 `最新`）。关闭开关时保留普通搜索，小红书账号作品接口不受影响。
+
+客户端提取 `workList`，将 `noteId/noteTitle/noteType/noteUrl/releaseTime`、
+作者字段以及 `thumbCount/replyCount/favoriteCount/forwardCount` 映射为
+`ArticleSchema`。`picUrls` 保留为图片列表，缺失时依次使用 `previewUrls`、封面；
+图片和预览图的 `format/heif` 替换为 `format/webp`。头像和预览图保存在 `extinfo`。
+
+该实时搜索响应未约定正文，故不把标题当作正文，入库时 `has_content=0`。
+响应也未约定固定页大小或分页标志，因此短页继续翻页；空页、重复页、
+显式 `hasMore=0` 或达到 `max_pages` 时结束。
+
+
+### 企业 B站关键词实时搜索
+
+设置 `REDFOX_ENTERPRISE=True` 后，B站关键词搜索调用
+`POST /story/api/bili/search`，发送 `keyword`、字符串页码 `page`，以及可选
+`order`。排序直接使用 `pubdate/click/dm/stow`，综合排序省略 `order`；
+关闭开关时保留普通接口及其原有排序转换。
+
+客户端从 `opusInfoList` 提取作品，以 `pages` 判断末页，短页继续翻页；
+空页、重复页或达到 `max_pages` 时也会结束。统一映射保留 BV/AV 号、
+秒级发布时间、简介、互动数、标签、分区、头像及秒级时长，清除标题高亮标签，
+并将封面、头像和作品链接规范为 HTTPS。实时接口未提供作者 UID，
+`ArticleSchema.author_id` 保持为空，不产生缺字段误报。

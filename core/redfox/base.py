@@ -71,6 +71,20 @@ PAGE_SIZE = 20  # redfox 通用接口单页固定 20
 # 基础客户端类
 # ---------------------------------------------------------------------------
 
+def as_int(value: Any) -> int:
+    try:
+        return int(float(str(value or 0).replace(",", "")))
+    except (TypeError, ValueError):
+        return 0
+
+
+
+def enterprise_enabled() -> bool:
+    """企业接口总开关，环境变量优先，默认关闭。"""
+    value = os.getenv("REDFOX_ENTERPRISE", str(cfg.get("redfox.enterprise", False)))
+    return value.strip().lower() in ("true", "1", "yes", "on")
+
+
 class RedfoxClient:
     """Redfox SDK 客户端基类。
 
@@ -158,7 +172,7 @@ class RedfoxClient:
         """
         if not isinstance(payload, dict):
             return ""
-        for k in ("account", "wxId", "bizInfo", "keyword", "userId", "accountId"):
+        for k in ("account", "wxId", "bizInfo", "keyword", "queryWord", "userId", "accountId"):
             v = payload.get(k)
             if v:
                 return str(v)[:128]

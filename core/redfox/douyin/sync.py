@@ -1,7 +1,6 @@
 """抖音订阅增量同步 worker。"""
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from datetime import datetime
@@ -14,7 +13,7 @@ from core.models.article import Article
 from core.models.feed import Feed
 from core.print import print_info, print_warning
 
-from ..validation import checked_item
+from .client import normalize_item
 from .client import PAGE_SIZE, iter_search_articles, parse_work_publish_time
 
 
@@ -34,139 +33,13 @@ def build_feed_id(kind: str, target: str) -> str:
     raise ValueError(f"未知 kind: {kind!r}")
 
 
-def _pick(data: Any, *paths: str, default=None):
-    """从 Redfox 新旧两种字段风格中取第一个非空值。"""
-    for path in paths:
-        current = data
-        for part in path.split("."):
-            if not isinstance(current, dict) or part not in current:
-                current = None
-                break
-            current = current[part]
-        if isinstance(current, list):
-            current = current[0] if current else None
-        if current not in (None, ""):
-            return current
-    return default
-
-
-def _as_int(value: Any) -> int:
-    try:
-        return int(float(str(value or 0).replace(",", "")))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _normalize_work(work: Dict[str, Any]) -> Dict[str, Any]:
-    """把抖音作品转换成共用 Article 字段。"""
-    raw_work_id = str(
-        _pick(work, "workId", "awemeId", "aweme_id", "videoId", "id", default="")
-    ).strip()
-    if not raw_work_id:
-        return {}
-
-    description = str(
-        _pick(
-            work, "content", "workDesc", "videoDesc", "desc", "description",
-            "workTitle", "videoTitle", "title", default="",
-        )
-    )
-    title = str(
-        _pick(
-            work, "workTitle", "videoTitle", "title", "content", "desc", "videoDesc",
-            "workDesc", default="",
-        )
-    )
-    cover_url = str(
-        _pick(
-            work,
-            "coverUrl",
-            "videoCover",
-            "workCover",
-            "cover",
-            "video.cover.url_list",
-            "video.dynamic_cover.url_list",
-            default="",
-        )
-    )
-    work_url = str(
-        _pick(
-            work, "opusUrl", "workUrl", "videoShareUrl", "shareUrl", "share_url",
-            "videoUrl", "url", default="",
-        )
-    )
-    video_url = str(
-        _pick(
-            work,
-            "videoUrl",
-            "playUrl",
-            "video.play_addr.url_list",
-            "video.download_addr.url_list",
-            default="",
-        )
-    )
-    publish_value = _pick(
-        work, "workPublishTime", "videoCreateTime", "publishTime", "createTime",
-        "create_time", default=0,
-    )
-    author = str(
-        _pick(
-            work, "authorName", "accountNickname", "accountName", "userNickname",
-            "author.nickname", "nickname", default="",
-        )
-    )
-    author_id = str(
-        _pick(
-            work,
-            "accountUserid",
-            "authorUid",
-            "authorSecUid",
-            "accountId",
-            "authorId",
-            "userId",
-            "secUserId",
-            "sec_uid",
-            "author.sec_uid",
-            "author.uid",
-            "uid",
-            default="",
-        )
-    )
-    extinfo = {
-        "platform": "dy",
-        "work_id": raw_work_id,
-        "video_url": video_url,
-        "duration": _as_int(_pick(work, "duration", "video.duration", default=0)),
-    }
-
-    item = {
-        "id": raw_work_id,
-        "title": title[:1000],
-        "content": description,
-        "description": description,
-        "pic_url": cover_url[:500] if cover_url else None,
-        "url": work_url[:500],
-        "publish_time": parse_work_publish_time(publish_value),
-        "author": author[:255] or None,
-        "author_id": author_id[:255] or None,
-        "image_urls": json.dumps([cover_url], ensure_ascii=False) if cover_url else "[]",
-        "extinfo": json.dumps(extinfo, ensure_ascii=False),
-        "liked_count": _as_int(_pick(work, "workLikedCount", "likedCount", "likeCount", "diggCount", "statistics.digg_count")),
-        "comments_count": _as_int(_pick(work, "workCommentsCount", "commentsCount", "commentCount", "statistics.comment_count")),
-        "collected_count": _as_int(_pick(work, "workCollectedCount", "collectedCount", "collectCount", "statistics.collect_count")),
-        "read_count": _as_int(_pick(work, "workReadedCount", "viewCount", "playCount", "statistics.play_count")),
-        "share_count": _as_int(_pick(work, "workSharedCount", "sharedCount", "shareCount", "statistics.share_count")),
-    }
-    return checked_item("douyin", work, item)
-
-
 def _fetch_works(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:
     max_pages = max(1, (max_count + PAGE_SIZE - 1) // PAGE_SIZE)
     start_date = (
         datetime.fromtimestamp(last_publish_time).strftime("%Y-%m-%d")
         if last_publish_time else None
     )
-    raw_iter = iter_search_articles(
+    articles = iter_search_articles(
         target,
         max_pages=max_pages,
         page_size=PAGE_SIZE,
@@ -174,8 +47,8 @@ def _fetch_works(target: str, last_publish_time: int, max_count: int) -> List[Di
     )
 
     results: List[Dict[str, Any]] = []
-    for work in raw_iter:
-        normalized = _normalize_work(work)
+    for article in articles:
+        normalized = article.to_record()
         if not normalized:
             continue
         publish_time = normalized.get("publish_time") or 0
@@ -219,7 +92,7 @@ def _upsert_articles(session, feed_id: str, works: List[Dict[str, Any]]) -> int:
                     share_count=work.get("share_count", 0),
                     status=1,
                     has_content=1,
-                    show_type=5,
+                    show_type=work.get("show_type", 5),
                     created_at=now_dt,
                     updated_at=now_ms,
                     updated_at_millis=now_ms,
@@ -329,3 +202,9 @@ def _record_failure(session, feed: Feed, exc: Exception, is_test: bool = False):
         session.commit()
     except Exception:
         session.rollback()
+
+
+def _normalize_work(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """兼容旧调用；同步主流程直接消费客户端 ArticleSchema。"""
+    article = normalize_item(raw)
+    return article.to_record() if article is not None else {}

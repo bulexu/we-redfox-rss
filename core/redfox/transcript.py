@@ -9,6 +9,8 @@ from core.print import print_warning
 _pending = set()
 _lock = threading.Lock()
 _ENDPOINTS = {"xhs": "xiaohongshu", "dy": "douyin", "bili": "bilibili"}
+_POLL_INTERVALS = (5, 15, 30, 60, 120, 180)
+_POLL_TIMEOUT = 6 * 60 * 60
 
 
 def _metadata(value):
@@ -169,7 +171,11 @@ def fetch_transcript(article_id):
                 article.extinfo = json.dumps(meta, ensure_ascii=False)
                 session.commit()
             # 有限轮询；超时保留 taskId，后续补抓可继续查询，避免重复付费提交。
-            for attempt in range(60):
+            deadline = time.monotonic() + _POLL_TIMEOUT
+            attempt = 0
+            while True:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"视频文案提取超时: {task_id}")
                 result = client._sdk_call(
                     f"{path}/result/{endpoint}", {"taskId": task_id},
                     lambda: api.transcript_result(task_id=task_id),
@@ -179,9 +185,12 @@ def fetch_transcript(article_id):
                     raise RuntimeError(f"视频文案提取失败: {result}")
                 if status not in ("pending", "processing", "running", "queued") and extract_text(result):
                     break
-                if attempt == 59:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
                     raise TimeoutError(f"视频文案提取超时: {task_id}")
-                time.sleep(5)
+                interval = _POLL_INTERVALS[min(attempt, len(_POLL_INTERVALS) - 1)]
+                time.sleep(min(interval, remaining))
+                attempt += 1
         else:
             raise RuntimeError(f"Redfox SDK 暂不支持 {platform} 视频文案接口")
         text = extract_text(result)

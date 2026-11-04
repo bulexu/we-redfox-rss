@@ -23,7 +23,6 @@
 """
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from datetime import datetime
@@ -35,7 +34,7 @@ from core.models.article import Article
 from core.models.feed import Feed
 from core.print import print_error, print_info, print_warning
 
-from ..validation import checked_item
+from .client import normalize_item
 from .client import (
     PAGE_SIZE,
     SORT_LATEST,
@@ -93,82 +92,6 @@ def build_feed_id(kind: str, target: str) -> str:
 
 # ---------- redfox note → Article 字段映射 ----------
 
-def _as_int(value: Any) -> int:
-    try:
-        return int(float(str(value or 0).replace(",", "")))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _normalize_image_url(url: Any) -> str:
-    # Redfox 偶尔返回要求 CDN 输出 HEIF 的图片链接。Chrome/Edge 在 Windows
-    # 上通常无法直接渲染 HEIF，而小红书 CDN 接受相同链接输出 WebP。
-    return str(url or "").replace("format/heif", "format/webp")
-
-
-def _normalize_work_type(note: Dict[str, Any]) -> tuple[str, int]:
-    """``workType`` → (原始类型, Article.show_type)。
-
-    ``workType`` 为 ``normal`` / ``video``;  show_type 语义见
-    ``core/models/article.py``:  0=图文,  5=视频。
-    """
-    raw = str(note.get("workType") or "").strip().lower()
-    if raw == "video":
-        return raw, 5
-    return raw, 0
-
-
-def _normalize_note(note: Dict[str, Any]) -> Dict[str, Any]:
-    """把 redfox note dict 拆成 ``Article.__init__`` 可吃的 kwargs。
-
-    字段对应通用接口 ``/story/api/xhsUser/searchArticle``:
-    ``workId`` / ``workTitle`` / ``workDesc`` / ``coverUrl`` / ``workUrl`` /
-    ``workPublishTime`` / ``accountNickname`` / ``accountUserid`` /
-    ``workLikedCount`` / ``workCommentsCount`` / ``workCollectedCount`` /
-    ``workSharedCount`` / ``workType`` / ``accountType``。
-
-    只做字段映射 + 类型规范化,  不入库。  字段语义详见 ``do_job_xhs`` 顶部。
-    """
-    work_id = str(note.get("workId") or "").strip()
-    if not work_id:
-        return {}
-
-    cover_url = _normalize_image_url(note.get("coverUrl"))
-    # 通用接口只返回封面, 没有全量图片列表。
-    image_urls_json = json.dumps([cover_url], ensure_ascii=False) if cover_url else "[]"
-
-    # workDesc 就是作品正文/介绍 (可能只是一串话题标签)。
-    content = str(note.get("workDesc") or "")
-    work_type, show_type = _normalize_work_type(note)
-    extinfo = {
-        "platform": "xhs",
-        "work_id": work_id,
-        "work_type": work_type,
-        # accountType 是内容分类 (如 "美味佳肴"), 不是账号 ID。
-        "account_type": str(note.get("accountType") or ""),
-    }
-
-    item = {
-        "id": work_id,
-        "title": (str(note.get("workTitle") or ""))[:1000],
-        "content": content,
-        "description": content,
-        "pic_url": cover_url or None,
-        "url": str(note.get("workUrl") or ""),
-        "publish_time": parse_work_publish_time(note.get("workPublishTime") or ""),
-        "author": (str(note.get("accountNickname") or ""))[:255] or None,
-        "author_id": (str(note.get("accountUserid") or ""))[:255] or None,
-        "image_urls": image_urls_json,
-        "extinfo": json.dumps(extinfo, ensure_ascii=False),
-        "show_type": show_type,
-        "liked_count": _as_int(note.get("workLikedCount")),
-        "comments_count": _as_int(note.get("workCommentsCount")),
-        "collected_count": _as_int(note.get("workCollectedCount")),
-        "read_count": _as_int(note.get("workReadedCount")),
-        "share_count": _as_int(note.get("workSharedCount")),
-    }
-    return checked_item("xhs", note, item)
-
 
 # ---------- 增量抓取主循环 ----------
 
@@ -181,7 +104,7 @@ def _fetch_notes(
 ) -> List[Dict[str, Any]]:
     """按 feed 类型拉 notes,  按 ``publish_time`` 增量早停,  最多 ``max_count`` 条。
 
-    返回的是 ``_normalize_note`` 之后的字段 dict 列表 (已经筛过增量边界)。
+    返回的是 ArticleSchema 序列化后的字段 dict 列表 (已经筛过增量边界)。
     """
     results: List[Dict[str, Any]] = []
 
@@ -191,13 +114,13 @@ def _fetch_notes(
     max_pages = max(1, (max_count + PAGE_SIZE - 1) // PAGE_SIZE)
 
     if kind == "keyword":
-        raw_iter = iter_search_articles(
+        articles = iter_search_articles(
             keyword=target,
             max_pages=max_pages,
             sort=DEFAULT_SORT_TYPE,
         )
     elif kind == "account":
-        raw_iter = iter_user_works(
+        articles = iter_user_works(
             user_id=target,
             max_pages=max_pages,
             sort_type=DEFAULT_SORT_TYPE,
@@ -206,8 +129,8 @@ def _fetch_notes(
     else:
         raise ValueError(f"未知 kind: {kind!r}")
 
-    for note in raw_iter:
-        normalized = _normalize_note(note)
+    for article in articles:
+        normalized = article.to_record()
         if not normalized:
             continue
         pt = normalized.get("publish_time") or 0
@@ -416,3 +339,9 @@ def _record_failure(
     except Exception as commit_exc:  # noqa: BLE001
         session.rollback()
         print_warning(f"[xhs] 写失败状态失败 feed={feed.id}: {commit_exc}")
+
+
+def _normalize_note(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """兼容旧调用；同步主流程直接消费客户端 ArticleSchema。"""
+    article = normalize_item(raw)
+    return article.to_record() if article is not None else {}

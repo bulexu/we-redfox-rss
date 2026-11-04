@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List
 
+from core.redfox.base import as_int
 from core.db import DB
 from core.models.article import Article
 from core.redfox.transcript import enrich_direct_transcripts, preserve_transcript
@@ -14,11 +15,6 @@ from core.print import print_info, print_warning
 AUTO_DISABLE_ERROR_THRESHOLD = 5
 
 
-def as_int(value: Any) -> int:
-    try:
-        return int(float(str(value or 0).replace(",", "")))
-    except (TypeError, ValueError):
-        return 0
 
 
 def upsert_articles(session, feed_id: str, items: List[Dict[str, Any]]) -> int:
@@ -41,7 +37,7 @@ def upsert_articles(session, feed_id: str, items: List[Dict[str, Any]]) -> int:
                 extinfo=item["extinfo"], liked_count=item["liked_count"],
                 comments_count=item["comments_count"], collected_count=item["collected_count"],
                 read_count=item["read_count"], share_count=item["share_count"],
-                status=1, has_content=1 if item["content"] else 0, show_type=5,
+                status=1, has_content=1 if item["content"] else 0, show_type=item.get("show_type", 5),
                 created_at=now_dt, updated_at=now_ms, updated_at_millis=now_ms,
             ))
             inserted += 1

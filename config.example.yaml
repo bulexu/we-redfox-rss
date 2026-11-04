@@ -145,6 +145,8 @@ gather:
 # Redfox 数据接口配置（用于替代公众号平台扫码授权）
 # API 密钥从 https://redfox.hk/settings/api-keys 获取
 redfox:
+  # 企业账号专属接口开关
+  enterprise: ${REDFOX_ENTERPRISE:-False}
   # 异步提取视频文案，任务进入内容补抓队列
   convert_video: ${REDFOX_CONVERT_VIDEO:-False}
   # Redfox API Key，必填。可通过环境变量 REDFOX_API_KEY 注入

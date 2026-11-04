@@ -1,9 +1,6 @@
 """哔哩哔哩关键词订阅同步。"""
 from __future__ import annotations
 
-import html
-import json
-import re
 import time
 import uuid
 from datetime import datetime
@@ -15,7 +12,7 @@ from core.redfox.transcript import preserve_transcript
 from core.models.feed import Feed
 from core.print import print_info, print_warning
 
-from ..validation import checked_item
+from .client import normalize_item
 from .client import ORDER_LATEST, PAGE_SIZE, iter_search_works, parse_publish_time
 
 AUTO_DISABLE_ERROR_THRESHOLD = 5
@@ -28,82 +25,11 @@ def build_feed_id(kind: str, target: str) -> str:
     return f"{BILI_KW_PREFIX}{uuid.uuid4().hex[:16]}"
 
 
-def _as_int(value: Any) -> int:
-    try:
-        return int(float(str(value or 0).replace(",", "")))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _clean_text(value: Any) -> str:
-    """去掉搜索结果标题里的高亮标签 (如 ``<em class="keyword">``) 并反转义。"""
-    text = html.unescape(str(value or ""))
-    return re.sub(r"<[^>]+>", "", text).strip()
-
-
-def _normalize_tags(value: Any) -> List[str]:
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, str):
-        return [item.strip() for item in value.split(",") if item.strip()]
-    return []
-
-
-def _normalize_cover(value: Any) -> str:
-    pic_url = str(value or "").strip()
-    if pic_url.startswith("//"):
-        return "https:" + pic_url
-    if pic_url.startswith("http://"):
-        return "https://" + pic_url[len("http://"):]
-    return pic_url
-
-
-def _normalize_work(work: Dict[str, Any]) -> Dict[str, Any]:
-    bvid = str(work.get("bvId") or work.get("bvid") or work.get("id") or "").strip()
-    if not bvid:
-        return {}
-    title = _clean_text(work.get("title"))
-    description = _clean_text(work.get("description"))
-    pic_url = _normalize_cover(work.get("cover") or work.get("picUrl") or work.get("coverUrl"))
-    tags = _normalize_tags(work.get("tags") if work.get("tags") is not None else work.get("tagNames"))
-    url = str(work.get("url") or work.get("workUrl") or f"https://www.bilibili.com/video/{bvid}")
-    if url.startswith("http://"):
-        url = "https://" + url[len("http://"):]
-    extinfo = {
-        "platform": "bili", "bvid": bvid,
-        "av_id": work.get("avId") or 0,
-        "duration": _as_int(work.get("duration")),
-        "category_id": str(work.get("categoryId") or ""),
-        "category_name": str(work.get("categoryName") or ""),
-        "type": str(work.get("type") or ""),
-        "danmaku_count": _as_int(work.get("danmakuCount")),
-        "total_danmaku_count": _as_int(work.get("totalDanmakuCount")),
-        "tags": tags,
-        "author_avatar": _normalize_cover(work.get("avatar")),
-    }
-    item = {
-        "id": bvid, "title": title[:1000], "content": description,
-        "description": description, "pic_url": pic_url[:500] or None,
-        "url": url[:500],
-        "publish_time": parse_publish_time(work.get("publishTime") or work.get("created")),
-        "author": str(work.get("nickname") or work.get("author") or "")[:255] or None,
-        "author_id": str(work.get("authorId") or "")[:255] or None,
-        "image_urls": json.dumps([pic_url], ensure_ascii=False) if pic_url else "[]",
-        "extinfo": json.dumps(extinfo, ensure_ascii=False),
-        "liked_count": _as_int(work.get("likeNum") if work.get("likeNum") is not None else work.get("likeCount")),
-        "comments_count": _as_int(work.get("commentNum") if work.get("commentNum") is not None else work.get("commentCount")),
-        "collected_count": _as_int(work.get("collectNum") if work.get("collectNum") is not None else work.get("favoriteCount")),
-        "read_count": _as_int(work.get("viewNum") if work.get("viewNum") is not None else work.get("playCount")),
-        "share_count": _as_int(work.get("shareCount")),
-    }
-    return checked_item("bilibili", work, item)
-
-
 def _fetch_works(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:
     max_pages = max(1, (max_count + PAGE_SIZE - 1) // PAGE_SIZE)
     results: List[Dict[str, Any]] = []
-    for raw in iter_search_works(target, max_pages=max_pages, order=ORDER_LATEST):
-        work = _normalize_work(raw)
+    for article in iter_search_works(target, max_pages=max_pages, order=ORDER_LATEST):
+        work = article.to_record()
         if not work:
             continue
         publish_time = work.get("publish_time") or 0
@@ -205,3 +131,9 @@ def do_job_bilibili(feed: Feed, is_test: bool = False) -> List[Dict[str, Any]]:
     finally:
         session.close()
 
+
+
+def _normalize_work(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """兼容旧调用；同步主流程直接消费客户端 ArticleSchema。"""
+    article = normalize_item(raw)
+    return article.to_record() if article is not None else {}

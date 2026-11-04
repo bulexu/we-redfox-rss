@@ -526,6 +526,7 @@ docker buildx build --platform=linux/amd64 \
 | 变量 | 默认值 | 含义 |
 | --- | --- | --- |
 | `REDFOX_API_KEY` | — | **必填**。redfox.hk API Key |
+| `REDFOX_ENTERPRISE` | `False` | 企业账号设为 `True`，抖音、小红书、B站关键词搜索改用实时接口 |
 | `REDFOX_BASE_URL` | `https://redfox.hk` | redfox API 入口 |
 | `REDFOX_TIMEOUT` | `15` | redfox 请求超时（秒） |
 

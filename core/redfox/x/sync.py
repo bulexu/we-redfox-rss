@@ -1,7 +1,6 @@
 """X (Twitter) 关键词订阅同步。"""
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from datetime import datetime
@@ -13,7 +12,7 @@ from core.redfox.transcript import preserve_transcript
 from core.models.feed import Feed
 from core.print import print_info, print_warning
 
-from ..validation import checked_item
+from .client import normalize_item
 from .client import PAGE_SIZE, iter_search_tweets, parse_publish_time
 
 AUTO_DISABLE_ERROR_THRESHOLD = 5
@@ -26,64 +25,11 @@ def build_feed_id(kind: str, target: str) -> str:
     return f"{X_KW_PREFIX}{uuid.uuid4().hex[:16]}"
 
 
-def _as_int(value: Any) -> int:
-    try:
-        return int(float(str(value or 0).replace(",", "")))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _normalize_tweet(tweet: Dict[str, Any]) -> Dict[str, Any]:
-    tweet_id = str(tweet.get("tweetId") or tweet.get("id") or "").strip()
-    if not tweet_id:
-        return {}
-    text = str(tweet.get("text") or tweet.get("fullText") or "").strip()
-    user = tweet.get("user") if isinstance(tweet.get("user"), dict) else {}
-    username = str(tweet.get("username") or user.get("username") or user.get("screenName") or "").lstrip("@").strip()
-    display_name = str(user.get("displayName") or user.get("name") or username).strip()
-    medias = tweet.get("medias") if isinstance(tweet.get("medias"), list) else []
-    image_urls = [
-        str(media.get("coverUrl") or media.get("url") or "").strip()
-        for media in medias if isinstance(media, dict)
-    ]
-    image_urls = [url for url in image_urls if url]
-    url = str(tweet.get("tweetUrl") or tweet.get("url") or "").strip()
-    if not url and username:
-        url = f"https://x.com/{username}/status/{tweet_id}"
-    elif not url:
-        url = f"https://x.com/i/status/{tweet_id}"
-    extinfo = {
-        "platform": "x", "tweet_id": tweet_id, "username": username,
-        "language": tweet.get("language") or "",
-        "quote_count": _as_int(tweet.get("quoteCount")),
-        "followers": _as_int(user.get("followers")),
-        "verified": bool(user.get("verified")),
-        "location": user.get("location") or "", "avatar": user.get("avatar") or "",
-        "medias": medias,
-    }
-    item = {
-        "id": f"x_{tweet_id}", "title": (text[:280] or "(无正文)"),
-        "content": text, "description": text,
-        "pic_url": image_urls[0][:500] if image_urls else None,
-        "url": url[:500],
-        "publish_time": parse_publish_time(tweet.get("createdAt") or tweet.get("created_at")),
-        "author": display_name[:255] or None, "author_id": username[:255] or None,
-        "image_urls": json.dumps(image_urls, ensure_ascii=False),
-        "extinfo": json.dumps(extinfo, ensure_ascii=False),
-        "liked_count": _as_int(tweet.get("likeCount")),
-        "comments_count": _as_int(tweet.get("replyCount")),
-        "collected_count": _as_int(tweet.get("bookmarkCount")),
-        "read_count": _as_int(tweet.get("viewCount")),
-        "share_count": _as_int(tweet.get("retweetCount")),
-    }
-    return checked_item("x", tweet, item)
-
-
 def _fetch_tweets(target: str, last_publish_time: int, max_count: int) -> List[Dict[str, Any]]:
     max_pages = max(1, (max_count + PAGE_SIZE - 1) // PAGE_SIZE)
     results: List[Dict[str, Any]] = []
-    for raw in iter_search_tweets(target, max_pages=max_pages, search_type="Latest"):
-        tweet = _normalize_tweet(raw)
+    for article in iter_search_tweets(target, max_pages=max_pages, search_type="Latest"):
+        tweet = article.to_record()
         if not tweet:
             continue
         publish_time = tweet.get("publish_time") or 0
@@ -184,3 +130,9 @@ def do_job_x(feed: Feed, is_test: bool = False) -> List[Dict[str, Any]]:
         raise
     finally:
         session.close()
+
+
+def _normalize_tweet(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """兼容旧调用；同步主流程直接消费客户端 ArticleSchema。"""
+    article = normalize_item(raw)
+    return article.to_record() if article is not None else {}

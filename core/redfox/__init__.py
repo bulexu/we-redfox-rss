@@ -49,7 +49,10 @@ from .wechat import (
     search_user,
 )
 
+from .schema import ArticleSchema
+
 __all__ = [
+    "ArticleSchema",
     # 基础类 / 异常 / 常量
     "RedfoxClient",
     "RedfoxError",

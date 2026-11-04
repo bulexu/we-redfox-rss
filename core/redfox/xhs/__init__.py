@@ -57,6 +57,7 @@ from .client import (
     SORT_LATEST,
     RedfoxError,
     SEARCH_ARTICLES_PATH,
+    REALTIME_SEARCH_PATH,
     SEARCH_USERS_PATH,
     XhsClient,
     get_user_works,
@@ -95,6 +96,7 @@ __all__ = [
     "AUTO_DISABLE_ERROR_THRESHOLD",
     # 路径 / 通用常量
     "SEARCH_ARTICLES_PATH",
+    "REALTIME_SEARCH_PATH",
     "SEARCH_USERS_PATH",
     "GET_USER_WORKS_PATH",
     "SORT_DEFAULT",

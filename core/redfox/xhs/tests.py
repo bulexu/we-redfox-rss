@@ -318,7 +318,9 @@ def test_do_job_xhs_watermark() -> bool:
         original_iter = sync_mod.iter_search_articles
 
         def fake_iter(keyword, max_pages=5, sort="最新", **kwargs):
-            yield from notes
+            from .client import normalize_item
+            for note in notes:
+                yield normalize_item(note)
 
         sync_mod.iter_search_articles = fake_iter
         try:

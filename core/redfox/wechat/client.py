@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from html import escape as html_escape
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -35,7 +36,9 @@ from ..base import (
     RedfoxError,
     SUCCESS_CODE,
     _get_client_for,
+    as_int,
 )
+from ..schema import ArticleSchema
 from ..validation import extract_items
 
 
@@ -250,7 +253,7 @@ class WechatClient(RedfoxClient):
         max_pages: int = 1,
         sortType: str = "2",
         page_size: int = PAGE_SIZE,
-    ) -> Iterable[Dict[str, Any]]:
+    ) -> Iterable[ArticleSchema]:
         """按页迭代公众号作品列表。
 
         Args:
@@ -271,7 +274,10 @@ class WechatClient(RedfoxClient):
             items = extract_items("wechat", data)
             if not items:
                 return
-            yield from items
+            for raw in items:
+                article = normalize_item(raw)
+                if article is not None:
+                    yield article
 
     def fetch_article_content(self, article_url: str) -> str:
         """通过红狐实时接口拉取公众号文章正文。
@@ -393,7 +399,7 @@ def iter_work_list(
     max_pages: int = 1,
     sortType: str = "2",
     page_size: int = PAGE_SIZE,
-) -> Iterable[Dict[str, Any]]:
+) -> Iterable[ArticleSchema]:
     """模块级便捷函数:  按页迭代作品列表。"""
     return _get_default_client().iter_work_list(
         account=account,
@@ -431,3 +437,102 @@ __all__ = [
     "PAGE_SIZE",
     "SUCCESS_CODE",
 ]
+
+
+# 公众号保留 FillBack 所需字段，与历史入库格式兼容。
+def parse_publish_time(value: Any) -> int:
+    """把 ``publishTime`` 转成 unix 秒；解析失败时返回当前时间。"""
+    if not value:
+        return int(time.time())
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y/%m/%d %H:%M:%S"):
+        try:
+            return int(datetime.strptime(text, fmt).timestamp())
+        except ValueError:
+            continue
+    return int(time.time())
+
+
+
+def work_uuid_to_aid(work_uuid: str) -> str:
+    """将 redfox ``workUuid`` 转为 ``aid``（去掉连字符保证兼容旧代码）。"""
+    if not work_uuid:
+        return ""
+    return work_uuid.replace("-", "").replace(" ", "")
+
+
+
+def normalize_fillback_item(raw: Dict[str, Any], Mps_id: str) -> Dict[str, Any]:
+    """把 redfox 单条作品数据映射为旧 FillBack 期待的字段。"""
+    article = normalize_item(raw)
+    if article is None:
+        return {}
+    work_uuid = raw.get("workUuid") or ""
+    aid = article.id
+    publish_ts = article.publish_time
+    return {
+        "id": aid,
+        "aid": aid,
+        "appmsgid": aid,
+        "mp_id": Mps_id,
+        "title": article.title,
+        "link": raw.get("workUrl") or "",
+        "url": article.url,
+        "cover": raw.get("coverUrl") or "",
+        "pic_url": article.pic_url or "",
+        "digest": raw.get("summary") or "",
+        "description": raw.get("summary") or "",
+        "update_time": publish_ts,
+        "create_time": publish_ts,
+        "publish_time": publish_ts,
+        # 状态/类型
+        "is_deleted": False,
+        "copyright_stat": int(raw.get("isOriginal") or 0),
+        "item_show_type": 0,
+        "show_type": 0,
+        "art_type": 0,
+        "publish_type": 0,
+        "publish_src": 0,
+        "publish_status": "200",
+        "service_type": 0,
+        "pre_publish_status": 0,
+        "original_check_type": 0,
+        "in_profile": 1,
+        "has_red_packet_cover": 0,
+        # redfox 扩展字段
+        "redfox_work_uuid": work_uuid,
+        "read_count": raw.get("readCount"),
+        "like_count": raw.get("likeCount"),
+        "watch_count": raw.get("watchCount"),
+        "comment_count": raw.get("commentCount"),
+        "share_count": raw.get("shareCount"),
+        "collect_count": raw.get("collectCount"),
+        "original_author": raw.get("originalAuthor"),
+        "source_url": raw.get("sourceUrl"),
+        "order_num": raw.get("orderNum"),
+    }
+
+
+def normalize_item(raw: Dict[str, Any]) -> ArticleSchema | None:
+    """公众号作品映射为统一模型；完整正文仍由后续正文采集补齐。"""
+    work_id = work_uuid_to_aid(str(raw.get("workUuid") or ""))
+    if not work_id:
+        return None
+    cover = str(raw.get("coverUrl") or "")
+    summary = str(raw.get("summary") or "")
+    return ArticleSchema(
+        id=work_id, title=str(raw.get("title") or ""),
+        description=summary, content=summary,
+        url=str(raw.get("workUrl") or ""), pic_url=cover or None,
+        publish_time=parse_publish_time(raw.get("publishTime")),
+        author=str(raw.get("originalAuthor") or "") or None,
+        image_urls=[cover] if cover else [], show_type=0,
+        read_count=as_int(raw.get("readCount")), liked_count=as_int(raw.get("likeCount")),
+        comments_count=as_int(raw.get("commentCount")),
+        collected_count=as_int(raw.get("collectCount")), share_count=as_int(raw.get("shareCount")),
+        extinfo={"platform": "wechat", "work_uuid": str(raw.get("workUuid") or ""),
+                 "source_url": raw.get("sourceUrl"), "watch_count": as_int(raw.get("watchCount")),
+                 "is_original": as_int(raw.get("isOriginal")), "order_num": raw.get("orderNum")},
+    )

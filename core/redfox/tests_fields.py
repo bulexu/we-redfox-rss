@@ -164,13 +164,13 @@ X_ITEM: Dict[str, Any] = {
 
 def _cases() -> List[Tuple[str, Dict[str, Any], Any]]:
     """(platform, fixture, normalizer) 列表。"""
-    from core.redfox.bilibili.sync import _normalize_work as bili_norm
-    from core.redfox.douyin.sync import _normalize_work as dy_norm
-    from core.redfox.instagram.sync import _normalize_post as ins_norm
-    from core.redfox.tiktok.sync import _normalize_video as tt_norm
-    from core.redfox.x.sync import _normalize_tweet as x_norm
-    from core.redfox.xhs.sync import _normalize_note as xhs_norm
-    from core.redfox.youtube.sync import _normalize_video as yt_norm
+    from core.redfox.bilibili.client import normalize_item as bili_norm
+    from core.redfox.douyin.client import normalize_item as dy_norm
+    from core.redfox.instagram.client import normalize_item as ins_norm
+    from core.redfox.tiktok.client import normalize_item as tt_norm
+    from core.redfox.x.client import normalize_item as x_norm
+    from core.redfox.xhs.client import normalize_item as xhs_norm
+    from core.redfox.youtube.client import normalize_item as yt_norm
 
     return [
         ("xhs", XHS_ITEM, xhs_norm),
@@ -194,7 +194,8 @@ def test_normalized_contract() -> bool:
         assert validate_raw(platform, raw) == [], (
             f"{platform}: fixture 缺少原始字段: {validate_raw(platform, raw)}"
         )
-        item = normalizer(raw)
+        article = normalizer(raw)
+        item = article.to_record() if article is not None else {}
         assert item, f"{platform}: 映射结果为空"
         missing = [f for f in NORMALIZED_FIELDS if f not in item]
         assert not missing, f"{platform}: 缺少规范字段 {missing}"
@@ -293,7 +294,8 @@ def test_live_fields() -> bool:
             continue
 
         for raw in items[:3]:
-            item = normalizer(raw)
+            article = normalizer(raw)
+            item = article.to_record() if article is not None else {}
             issues = validate_raw(platform, raw) + validate_normalized(platform, item)
             if issues:
                 ok = False

@@ -12,16 +12,15 @@
 """
 
 import asyncio
-import json
 import re
 import time
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from core.log import logger
 from core.print import print_error, print_info, print_success, print_warning
 from core.redfox import RedfoxError, query_work_list
 from core.redfox.validation import extract_items
+from core.redfox.wechat.client import normalize_fillback_item, parse_publish_time, work_uuid_to_aid
 from core.wx.base import WxGather
 
 if TYPE_CHECKING:
@@ -73,74 +72,12 @@ class MpsWeb(WxGather):
         # 默认按微信号处理
         return {"account": faker_id, "wxId": None, "bizInfo": None}
 
-    @staticmethod
-    def _parse_publish_time(value: Any) -> int:
-        """把 ``publishTime`` 转成 unix 秒；解析失败时返回当前时间。"""
-        if not value:
-            return int(time.time())
-        if isinstance(value, (int, float)):
-            return int(value)
-        text = str(value).strip()
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y/%m/%d %H:%M:%S"):
-            try:
-                return int(datetime.strptime(text, fmt).timestamp())
-            except ValueError:
-                continue
-        return int(time.time())
+    _parse_publish_time = staticmethod(parse_publish_time)
 
-    @staticmethod
-    def _work_uuid_to_aid(work_uuid: str) -> str:
-        """将 redfox ``workUuid`` 转为 ``aid``（去掉连字符保证兼容旧代码）。"""
-        if not work_uuid:
-            return ""
-        return work_uuid.replace("-", "").replace(" ", "")
+    _work_uuid_to_aid = staticmethod(work_uuid_to_aid)
 
     def _map_work_item(self, raw: Dict[str, Any], Mps_id: str) -> Dict[str, Any]:
-        """把 redfox 单条作品数据映射为旧 FillBack 期待的字段。"""
-        work_uuid = raw.get("workUuid") or ""
-        aid = self._work_uuid_to_aid(work_uuid) or work_uuid
-        publish_ts = self._parse_publish_time(raw.get("publishTime"))
-        return {
-            "id": aid,
-            "aid": aid,
-            "appmsgid": aid,
-            "mp_id": Mps_id,
-            "title": raw.get("title") or "",
-            "link": raw.get("workUrl") or "",
-            "url": raw.get("workUrl") or "",
-            "cover": raw.get("coverUrl") or "",
-            "pic_url": raw.get("coverUrl") or "",
-            "digest": raw.get("summary") or "",
-            "description": raw.get("summary") or "",
-            "update_time": publish_ts,
-            "create_time": publish_ts,
-            "publish_time": publish_ts,
-            # 状态/类型
-            "is_deleted": False,
-            "copyright_stat": int(raw.get("isOriginal") or 0),
-            "item_show_type": 0,
-            "show_type": 0,
-            "art_type": 0,
-            "publish_type": 0,
-            "publish_src": 0,
-            "publish_status": "200",
-            "service_type": 0,
-            "pre_publish_status": 0,
-            "original_check_type": 0,
-            "in_profile": 1,
-            "has_red_packet_cover": 0,
-            # redfox 扩展字段
-            "redfox_work_uuid": work_uuid,
-            "read_count": raw.get("readCount"),
-            "like_count": raw.get("likeCount"),
-            "watch_count": raw.get("watchCount"),
-            "comment_count": raw.get("commentCount"),
-            "share_count": raw.get("shareCount"),
-            "collect_count": raw.get("collectCount"),
-            "original_author": raw.get("originalAuthor"),
-            "source_url": raw.get("sourceUrl"),
-            "order_num": raw.get("orderNum"),
-        }
+        return normalize_fillback_item(raw, Mps_id)
 
     # ------------------------------------------------------------------
     # 主流程

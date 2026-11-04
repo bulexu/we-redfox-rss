@@ -21,6 +21,7 @@ import json
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.print import print_warning
+from .schema import ArticleSchema
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +96,9 @@ RAW_REQUIRED_FIELDS: Dict[str, Tuple[str, ...]] = {
 
 # 响应里承载列表的字段名候选 (按优先级)
 LIST_KEYS: Dict[str, Tuple[str, ...]] = {
-    "xhs": ("list", "notes"),
-    "bilibili": ("workList",),
-    "douyin": ("list", "works", "articles"),
+    "xhs": ("workList", "list", "notes"),
+    "bilibili": ("opusInfoList", "workList",),
+    "douyin": ("videoList", "list", "works", "articles"),
     "tiktok": ("list", "items", "videos"),
     "youtube": ("videos", "items", "list"),
     "instagram": ("items", "posts", "list"),
@@ -189,6 +190,14 @@ def validate_raw(platform: str, raw: Dict[str, Any]) -> List[str]:
     if not isinstance(raw, dict):
         return [f"原始数据不是 dict: {type(raw).__name__}"]
     required = RAW_REQUIRED_FIELDS.get(platform, ())
+    if platform == "bilibili" and "nickname" in raw:
+        # 实时搜索未提供 authorId，不应为此产生缺字段告警。
+        required = ("bvId", "title", "description", "cover", "publishTime", "nickname")
+    if platform == "xhs" and "noteId" in raw:
+        # 实时搜索没有正文；仅校验该接口约定的核心字段。
+        required = ("noteId", "noteTitle", "coverImage", "noteUrl", "releaseTime", "authorName", "authorUid")
+    if platform == "douyin" and "videoUrl" in raw:
+        required = tuple(field for field in required if field != "opusUrl")
     return [
         f"缺少原始字段 {field}"
         for field in required
@@ -213,6 +222,8 @@ def _type_ok(value: Any, expected: Sequence[str]) -> bool:
 
 def validate_normalized(platform: str, item: Dict[str, Any]) -> List[str]:
     """检查映射后的 dict 是否符合统一字段契约。"""
+    if isinstance(item, ArticleSchema):
+        item = item.to_record()
     if not isinstance(item, dict):
         return [f"规范化结果不是 dict: {type(item).__name__}"]
 

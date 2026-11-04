@@ -95,13 +95,6 @@
         <a-page-header :title="activeFeed ? activeFeed.name : '全部'" :subtitle="'管理您的公众号订阅内容'" :show-back="false">
           <template #extra>
             <a-space>
-              <span style="font-size: 12px; color: var(--color-text-3);">{{ issourceUrl ? '原链接' : '内链' }}</span>
-              <a-switch 
-                v-model="issourceUrl" 
-                size="small" 
-                style="margin: 0 8px;">
-              </a-switch>
-
               <a-button  @click="handleExportShow()">
                 <template #icon><icon-export /></template>
                 导出
@@ -600,7 +593,7 @@ const columns = computed(() => {
             h(isRead ? IconCheck : IconClose)
           ]),
           h('a', {
-            href: issourceUrl.value ? record.url || '#' : "/views/article/" + record.id,
+            href: "/views/article/" + encodeURIComponent(record.id),
             title: record.title,
             target: '_blank',
             style: {
@@ -839,20 +832,6 @@ const fetchArticles = async () => {
     loading.value = false
   }
 }
-const issourceUrl = ref(false)
-
-// 从 localStorage 读取 issourceUrl 值
-const initIssourceUrl = () => {
-  const savedValue = localStorage.getItem('issourceUrl')
-  if (savedValue !== null) {
-    issourceUrl.value = savedValue === 'true'
-  }
-}
-
-// 监听 issourceUrl 变化并保存到 localStorage
-watch(issourceUrl, (newValue) => {
-  localStorage.setItem('issourceUrl', newValue.toString())
-}, { immediate: false })
 const handlePageChange = (page: number) => {
   console.log('分页事件触发:', { page })
   pagination.value.current = page
@@ -1240,7 +1219,6 @@ const handleExportShow = async () => {
 
 onMounted(() => {
   console.log('组件挂载，开始获取数据')
-  initIssourceUrl() // 初始化 issourceUrl 值
   fetchMpList().then(() => {
     console.log('公众号列表获取完成')
     fetchArticles()

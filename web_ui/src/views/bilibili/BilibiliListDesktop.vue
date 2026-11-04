@@ -168,7 +168,7 @@ const selectFeed=(id:string)=>{activeFeedId.value=id;articlePagination.current=1
 const searchArticles=()=>{articlePagination.current=1;loadArticles()}
 const changeArticlePage=(p:number)=>{articlePagination.current=p;loadArticles()}
 const changeArticlePageSize=(s:number)=>{articlePagination.pageSize=s;articlePagination.current=1;loadArticles()}
-const openWork=(record:BilibiliArticle)=>record.url?window.open(record.url,'_blank','noopener,noreferrer'):window.open(`/views/article/${record.id}`,'_blank')
+const openWork=(record:BilibiliArticle)=>window.open(`/views/article/${encodeURIComponent(record.id)}`,'_blank','noopener,noreferrer')
 const openRss=(format:string)=>activeFeedId.value&&window.open(`/feed/${activeFeedId.value}.${format}`,'_blank')
 
 const batchDelete=()=>Modal.confirm({title:'确认批量删除',content:`确定删除选中的 ${selectedRowKeys.value.length} 个作品吗？`,onOk:async()=>{await Promise.all(selectedRowKeys.value.map(id=>deleteArticle(id)));selectedRowKeys.value=[];Message.success('已删除');loadArticles()}})

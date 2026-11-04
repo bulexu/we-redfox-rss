@@ -12,7 +12,9 @@ class TranscriptTests(unittest.TestCase):
         items = [dict(id=str(i), title='title', extinfo=json.dumps(meta)) for i, meta in enumerate([
             {'platform': 'xhs', 'work_type': 'normal'},
             {'platform': 'xhs', 'work_type': 'video'},
-            {'platform': 'dy'}, {'platform': 'youtube'}, {'platform': 'x'},
+            {'platform': 'dy'}, {'platform': 'bili'}, {'platform': 'youtube'},
+            {'platform': 'x'}, {'platform': 'tiktok'}, {'platform': 'instagram'},
+            {'platform': 'unknown'},
         ])]
         with patch('core.queue.ContentTaskQueue.add_task', return_value=False) as add:
             with patch.dict(os.environ, REDFOX_CONVERT_VIDEO='False'):
@@ -54,14 +56,15 @@ class TranscriptTests(unittest.TestCase):
                     for i, meta in enumerate([
                         {'platform': 'xhs', 'work_type': 'normal'},
                         {'platform': 'youtube', 'video_transcript': '已完成'},
-                        {'platform': 'youtube'}, {'platform': 'dy'}, {'platform': 'bili'},
+                        {'platform': 'youtube'}, {'platform': 'x'}, {'platform': 'tiktok'},
+                        {'platform': 'instagram'}, {'platform': 'dy'}, {'platform': 'bili'},
                     ])]
         session = MagicMock()
         session.query.return_value.filter.return_value.order_by.return_value.yield_per.return_value = articles
         with patch.dict(os.environ, REDFOX_CONVERT_VIDEO='True'), patch('core.db.DB.get_session', return_value=session), patch('core.queue.ContentTaskQueue.add_task', return_value=True) as add:
             try:
                 self.assertEqual(backfill_transcripts(limit=1), 1)
-                self.assertEqual(add.call_args.args[1], '3')
+                self.assertEqual(add.call_args.args[1], '6')
                 add.assert_called_once()
             finally:
                 from core.redfox.transcript import _pending
@@ -102,6 +105,15 @@ class TranscriptTests(unittest.TestCase):
             with patch.dict(os.environ, REDFOX_CONVERT_VIDEO='True'):
                 enrich_direct_transcripts(session, [item])
                 self.assertEqual(item['content'], '介绍')
+
+    def test_old_unsupported_tasks_do_not_call_sdk(self):
+        session = MagicMock()
+        for platform in ('x', 'tiktok', 'instagram', 'youtube', 'unknown'):
+            session.query.return_value.filter.return_value.first.return_value = SimpleNamespace(
+                status=1, extinfo=json.dumps({'platform': platform}))
+            with patch('core.db.DB.get_session', return_value=session), patch('core.redfox.base._get_client_for') as client:
+                fetch_transcript('old-task')
+                client.assert_not_called()
 
     def test_refresh_preserves_transcript(self):
         article = SimpleNamespace(content='完整文案', extinfo=json.dumps({'video_transcript': '口播', 'transcript_task_id': 'id'}))

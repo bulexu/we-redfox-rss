@@ -42,7 +42,7 @@ def video_conversion_enabled():
 def needs_transcript(meta):
     platform = meta.get("platform")
     return bool(
-        platform and platform not in ("wechat", "youtube")
+        platform in _ENDPOINTS
         and not meta.get("video_transcript")
         and (platform != "xhs" or meta.get("work_type") == "video")
         and time.time() - meta.get("transcript_failed_at", 0) >= 3600
@@ -151,8 +151,8 @@ def fetch_transcript(article_id):
         if meta.get("video_transcript"):
             return
         platform = meta.get("platform")
-        if platform == "youtube":
-            return  # 兼容更新前已入队的任务，字幕改由采集流程直接获取。
+        if platform not in _ENDPOINTS:
+            return  # 兼容更新前已入队的任务，不支持的平台不发起接口请求。
         client = _get_client_for("transcript", RedfoxClient)
         if platform in _ENDPOINTS:
             endpoint = _ENDPOINTS[platform]

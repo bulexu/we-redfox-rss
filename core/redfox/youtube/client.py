@@ -70,7 +70,8 @@ def iter_search_videos(keyword: str, max_pages: int = 5) -> Iterable[ArticleSche
 
 
 def get_transcript(video_url: str):
-    return _get_default_client().get_transcript(video_url)
+    client = _get_client_for("youtube_transcript", lambda: YouTubeClient(max_retries=0))
+    return client.get_transcript(video_url)
 
 
 # Redfox 原始作品 → 统一 Article 字段；不访问数据库。

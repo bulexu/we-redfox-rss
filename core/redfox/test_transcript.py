@@ -8,14 +8,27 @@ from core.redfox.transcript import backfill_transcripts, enrich_direct_transcrip
 
 
 class TranscriptTests(unittest.TestCase):
+    def test_xhs_unsigned_link_is_not_submitted(self):
+        item = dict(id='a', url='https://www.xiaohongshu.com/discovery/item/a',
+                    extinfo='{"platform":"xhs","work_type":"video"}')
+        session = MagicMock()
+        session.query.return_value.filter.return_value.first.return_value = SimpleNamespace(status=1, **item)
+        with patch.dict(os.environ, REDFOX_CONVERT_VIDEO='True'), patch('core.queue.ContentTaskQueue.add_task') as add, patch('core.db.DB.get_session', return_value=session), patch('core.redfox.base._get_client_for') as client:
+            enqueue_transcripts([item])
+            fetch_transcript('a')
+            add.assert_not_called()
+            client.assert_not_called()
+
     def test_switch_and_xhs_type(self):
-        items = [dict(id=str(i), title='title', extinfo=json.dumps(meta)) for i, meta in enumerate([
+        items = [dict(id=str(i), title='title', url=f'https://www.xiaohongshu.com/explore/{i}?xsec_token=test&xsec_source=pc_feed', extinfo=json.dumps(meta)) for i, meta in enumerate([
             {'platform': 'xhs', 'work_type': 'normal'},
             {'platform': 'xhs', 'work_type': 'video'},
             {'platform': 'dy'}, {'platform': 'bili'}, {'platform': 'youtube'},
             {'platform': 'x'}, {'platform': 'tiktok'}, {'platform': 'instagram'},
             {'platform': 'unknown'},
         ])]
+        items[2]['url'] = 'https://www.douyin.com/video/123'
+        items[3]['url'] = 'https://www.bilibili.com/video/BV123'
         with patch('core.queue.ContentTaskQueue.add_task', return_value=False) as add:
             with patch.dict(os.environ, REDFOX_CONVERT_VIDEO='False'):
                 enqueue_transcripts(items)
@@ -27,9 +40,13 @@ class TranscriptTests(unittest.TestCase):
     def test_worker_platforms_and_resume(self):
         for platform, endpoint in [('dy', 'douyin'), ('xhs', 'xiaohongshu'), ('bili', 'bilibili')]:
             with self.subTest(platform=platform):
-                article = SimpleNamespace(id='a', status=1, url='https://example.com/video',
+                article = SimpleNamespace(id='a', status=1, url='https://www.xiaohongshu.com/discovery/item/a?xsec_token=test&xsec_source=pc_feed',
                                           extinfo=json.dumps({'platform': platform}),
                                           description='原介绍', content='原介绍')
+                if platform == 'dy':
+                    article.url = 'https://www.douyin.com/video/123'
+                elif platform == 'bili':
+                    article.url = 'https://www.bilibili.com/video/BV123'
                 session = MagicMock()
                 session.query.return_value.filter.return_value.first.return_value = article
                 client = MagicMock()
@@ -45,56 +62,50 @@ class TranscriptTests(unittest.TestCase):
                     fetch_transcript('a')
                     if platform != 'youtube':
                         api.transcript_submit.assert_called_once()
+                        if platform == 'xhs':
+                            api.transcript_submit.assert_called_with(url='https://www.xiaohongshu.com/explore/a?xsec_token=test&xsec_source=pc_feed')
                         article.extinfo = json.dumps({'platform': platform, 'transcript_task_id': 'remote-id'})
                         api.transcript_result.side_effect = None
                         api.transcript_result.return_value = {'text': '重试结果'}
                         fetch_transcript('a')
                         api.transcript_submit.assert_called_once()
 
-    def test_poll_backoff_and_six_hour_deadline(self):
-        for complete in (True, False):
-            with self.subTest(complete=complete):
-                article = SimpleNamespace(id='a', status=1, url='https://example.com/video',
-                                          extinfo=json.dumps({'platform': 'dy', 'transcript_task_id': 'remote-id'}),
-                                          description='原介绍', content='原介绍')
-                session = MagicMock()
-                session.query.return_value.filter.return_value.first.return_value = article
-                client = MagicMock()
-                client._sdk_call.side_effect = lambda path, payload, op: op()
-                clock = [0.0]
-                waits = []
-                queries = []
+    def test_poll_budget_survives_retry(self):
+        article = SimpleNamespace(status=1, url='https://www.douyin.com/video/123',
+                                  extinfo='{"platform":"dy"}')
+        session = MagicMock()
+        session.query.return_value.filter.return_value.first.return_value = article
+        client = MagicMock()
+        client._sdk_call.side_effect = lambda path, payload, op: op()
+        api = client._sdk.douyin
+        api.transcript_submit.return_value = {'taskId': 'remote-id'}
+        api.transcript_result.return_value = {'status': 'processing'}
+        with patch('core.db.DB.get_session', return_value=session), patch('core.redfox.base._get_client_for', return_value=client), patch('core.redfox.transcript.time.sleep'):
+            with self.assertRaises(TimeoutError):
+                fetch_transcript('a')
+            fetch_transcript('a')
+        api.transcript_submit.assert_called_once()
+        self.assertEqual(api.transcript_result.call_count, 2)
+        self.assertEqual(json.loads(article.extinfo)['transcript_call_count'], 3)
 
-                def result(task_id):
-                    queries.append(clock[0])
-                    clock[0] += 2  # 请求耗时也计入总时长
-                    if complete and len(queries) == 9:
-                        return {'status': 'success', 'text': '口播'}
-                    return {'status': 'processing'}
-
-                def sleep(seconds):
-                    waits.append(seconds)
-                    clock[0] += seconds
-
-                client._sdk.douyin.transcript_result.side_effect = result
-                with patch('core.db.DB.get_session', return_value=session), patch('core.redfox.base._get_client_for', return_value=client), patch('core.redfox.transcript.time.monotonic', side_effect=lambda: clock[0]), patch('core.redfox.transcript.time.sleep', side_effect=sleep):
-                    if complete:
-                        fetch_transcript('a')
-                        self.assertEqual(article.content, '原介绍\n\n口播')
-                        self.assertEqual(waits, [5, 15, 30, 60, 120, 180, 180, 180])
-                    else:
-                        with self.assertRaises(TimeoutError):
-                            fetch_transcript('a')
-                        self.assertEqual(clock[0], 6 * 60 * 60)
-                        self.assertTrue(all(t < 6 * 60 * 60 for t in queries))
-                        self.assertEqual(waits[:6], [5, 15, 30, 60, 120, 180])
-                        self.assertLessEqual(max(waits), 180)
-                        self.assertEqual(json.loads(article.extinfo)['transcript_task_id'], 'remote-id')
-                    self.assertEqual(queries[0], 0)  # 保留首次立即查询
-                    client._sdk.douyin.transcript_submit.assert_not_called()
+    def test_failed_submissions_share_the_same_budget(self):
+        article = SimpleNamespace(status=1, url='https://www.bilibili.com/video/BV123',
+                                  extinfo='{"platform":"bili"}')
+        session = MagicMock()
+        session.query.return_value.filter.return_value.first.return_value = article
+        client = MagicMock()
+        client._sdk_call.side_effect = lambda path, payload, op: op()
+        submit = client._sdk.bilibili.transcript_submit
+        submit.side_effect = RuntimeError('接口失败')
+        with patch('core.db.DB.get_session', return_value=session), patch('core.redfox.base._get_client_for', return_value=client):
+            for _ in range(3):
+                with self.assertRaises(RuntimeError):
+                    fetch_transcript('a')
+            fetch_transcript('a')
+        self.assertEqual(submit.call_count, 3)
 
     def test_backfill_existing_articles_and_batch_limit(self):
-        articles = [SimpleNamespace(id=str(i), title='旧视频', extinfo=json.dumps(meta))
+        articles = [SimpleNamespace(id=str(i), title='旧视频', url='https://www.douyin.com/video/123', extinfo=json.dumps(meta))
                     for i, meta in enumerate([
                         {'platform': 'xhs', 'work_type': 'normal'},
                         {'platform': 'youtube', 'video_transcript': '已完成'},
@@ -137,7 +148,7 @@ class TranscriptTests(unittest.TestCase):
             get.assert_called_once()
 
     def test_direct_subtitles_disabled_or_failed(self):
-        item = dict(id='youtube_a', url='url', content='介绍', extinfo='{"platform":"youtube"}')
+        item = dict(id='youtube_a', url='https://youtube.com/watch?v=a', content='介绍', extinfo='{"platform":"youtube"}')
         session = MagicMock()
         session.query.return_value.filter.return_value.all.return_value = []
         with patch('core.redfox.youtube.client.get_transcript', side_effect=RuntimeError('无字幕')) as get:

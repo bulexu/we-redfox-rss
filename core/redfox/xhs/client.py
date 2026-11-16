@@ -416,13 +416,23 @@ def normalize_item(note: Dict[str, Any]) -> ArticleSchema | None:
     if isinstance(previews, list):
         extinfo["preview_urls"] = preview_urls
 
+    from core.redfox.transcript import xhs_transcript_url
+
+    work_url = str(_field(note, "workUrl", "noteUrl", default=""))
+    if work_type == "video":
+        for candidate in (note.get("workUrl"), note.get("noteUrl")):
+            signed_url = xhs_transcript_url(candidate, work_id)
+            if signed_url:
+                work_url = signed_url
+                break
+
     item = {
         "id": work_id,
         "title": str(_field(note, "workTitle", "noteTitle", default=""))[:1000],
         "content": content,
         "description": content,
         "pic_url": cover_url or None,
-        "url": str(_field(note, "workUrl", "noteUrl", default="")),
+        "url": work_url,
         "publish_time": parse_work_publish_time(_field(note, "workPublishTime", "releaseTime")),
         "author": str(_field(note, "accountNickname", "authorName", default=""))[:255] or None,
         "author_id": str(_field(note, "accountUserid", "authorUid", default=""))[:255] or None,

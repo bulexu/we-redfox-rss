@@ -105,7 +105,8 @@ if __name__ == '__main__':
     else:
         print_warning("未开启定时任务")
     
-    if cfg.get("gather.content_auto_check",False):
+    from core.redfox.transcript import video_conversion_enabled
+    if cfg.get("gather.content_auto_check", False) or video_conversion_enabled():
         from jobs import start_fix_article
         start_fix_article()
         print_success("已开启自动修正文章任务")

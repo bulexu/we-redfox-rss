@@ -3,14 +3,15 @@ import json
 import os
 import threading
 import time
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from core.print import print_warning
 
 _pending = set()
 _lock = threading.Lock()
 _ENDPOINTS = {"xhs": "xiaohongshu", "dy": "douyin", "bili": "bilibili"}
-_POLL_INTERVALS = (5, 15, 30, 60, 120, 180)
-_POLL_TIMEOUT = 6 * 60 * 60
+_MAX_TRANSCRIPT_CALLS = 3
+_POLL_INTERVALS = (5, 15)
 
 
 def _metadata(value):
@@ -41,10 +42,59 @@ def video_conversion_enabled():
     return enabled.lower() in ("true", "1", "yes", "on")
 
 
+def xhs_transcript_url(url, work_id):
+    """保留原始签名和来源参数，并统一为 Redfox 要求的作品路径。"""
+    try:
+        parts = urlsplit((url or "").strip())
+        params = parse_qs(parts.query)
+    except ValueError:
+        return None
+    if (
+        not work_id or parts.scheme != "https"
+        or parts.netloc.lower() not in ("www.xiaohongshu.com", "xiaohongshu.com")
+        or parts.path.rstrip("/") not in (f"/explore/{work_id}", f"/discovery/item/{work_id}")
+        or not params.get("xsec_token") or not params.get("xsec_source")
+    ):
+        return None
+    return urlunsplit(("https", "www.xiaohongshu.com", f"/explore/{work_id}", parts.query, ""))
+
+
+def transcript_url(platform, url, work_id):
+    if platform == "xhs":
+        return xhs_transcript_url(url, work_id)
+    try:
+        parts = urlsplit((url or "").strip())
+    except ValueError:
+        return None
+    if parts.scheme != "https":
+        return None
+    host = parts.netloc.lower()
+    path = parts.path.rstrip("/")
+    if platform == "dy":
+        valid = (
+            (host in ("www.douyin.com", "douyin.com") and path.startswith(("/video/", "/note/"))
+             and path.count("/") == 2 and path.rsplit("/", 1)[-1].isdigit())
+            or (host == "v.douyin.com" and path.count("/") == 1 and path[1:].isalnum())
+        )
+    elif platform == "bili":
+        valid = (
+            (host in ("www.bilibili.com", "bilibili.com", "m.bilibili.com")
+             and path.startswith("/video/") and path[7:].isalnum()
+             and path[7:].startswith(("BV", "av")) and len(path) > 9)
+            or (host == "b23.tv" and path.count("/") == 1 and path[1:].isalnum())
+        )
+    elif platform == "youtube":
+        valid = host in ("www.youtube.com", "youtube.com", "m.youtube.com") and path == "/watch" and bool(parse_qs(parts.query).get("v"))
+    else:
+        valid = False
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, "")) if valid else None
+
+
 def needs_transcript(meta):
     platform = meta.get("platform")
     return bool(
         platform in _ENDPOINTS
+        and meta.get("transcript_call_count", 0) < _MAX_TRANSCRIPT_CALLS
         and not meta.get("video_transcript")
         and (platform != "xhs" or meta.get("work_type") == "video")
         and time.time() - meta.get("transcript_failed_at", 0) >= 3600
@@ -63,6 +113,8 @@ def enqueue_transcripts(items):
         if not needs_transcript(meta):
             continue
         key = item["id"]
+        if not meta.get("transcript_task_id") and not transcript_url(platform, item.get("url"), key):
+            continue
         with _lock:
             if key in _pending:
                 continue
@@ -70,7 +122,7 @@ def enqueue_transcripts(items):
         try:
             accepted = ContentTaskQueue.add_task(
                 fetch_transcript, key, task_name=f"视频文案提取 [{platform}] {key}: {item.get('title') or key}",
-                max_retries=2 if platform in _ENDPOINTS else 0,
+                max_retries=2,
             )
             if accepted:
                 count += 1
@@ -102,8 +154,15 @@ def enrich_direct_transcripts(session, items):
         previous = existing.get(item["id"])
         if meta.get("video_transcript") or (previous and _metadata(previous.extinfo).get("video_transcript")):
             continue
+        previous_meta = _metadata(previous.extinfo) if previous else {}
+        count = max(meta.get("transcript_call_count", 0), previous_meta.get("transcript_call_count", 0))
+        url = transcript_url("youtube", item.get("url"), item["id"])
+        if count >= _MAX_TRANSCRIPT_CALLS or not url:
+            continue
+        meta["transcript_call_count"] = count + 1
+        item["extinfo"] = json.dumps(meta, ensure_ascii=False)
         try:
-            text = extract_text(get_transcript(item["url"]))
+            text = extract_text(get_transcript(url))
             if text:
                 meta["video_transcript"] = text
                 item["extinfo"] = json.dumps(meta, ensure_ascii=False)
@@ -130,7 +189,7 @@ def backfill_transcripts(limit=10):
         ).order_by(Article.publish_time.desc()).yield_per(100)
         for article in articles:
             count += enqueue_transcripts([{
-                "id": article.id, "title": article.title, "extinfo": article.extinfo,
+                "id": article.id, "title": article.title, "extinfo": article.extinfo, "url": article.url,
             }])
             if count >= limit:
                 break
@@ -155,44 +214,44 @@ def fetch_transcript(article_id):
         platform = meta.get("platform")
         if platform not in _ENDPOINTS:
             return  # 兼容更新前已入队的任务，不支持的平台不发起接口请求。
-        client = _get_client_for("transcript", RedfoxClient)
-        if platform in _ENDPOINTS:
-            endpoint = _ENDPOINTS[platform]
-            api = getattr(client._sdk, endpoint)
-            path = f"/story/api/parseWork/audioTextExtract"
-            task_id = meta.get("transcript_task_id")
-            if not task_id:
-                task = client._sdk_call(
-                    f"{path}/submit/{endpoint}", {"url": article.url},
-                    lambda: api.transcript_submit(url=article.url),
-                )
-                task_id = task["taskId"]
-                meta["transcript_task_id"] = task_id
-                article.extinfo = json.dumps(meta, ensure_ascii=False)
-                session.commit()
-            # 有限轮询；超时保留 taskId，后续补抓可继续查询，避免重复付费提交。
-            deadline = time.monotonic() + _POLL_TIMEOUT
-            attempt = 0
-            while True:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(f"视频文案提取超时: {task_id}")
-                result = client._sdk_call(
-                    f"{path}/result/{endpoint}", {"taskId": task_id},
-                    lambda: api.transcript_result(task_id=task_id),
-                )
-                status = str(result.get("status", result.get("taskStatus", ""))).lower() if isinstance(result, dict) else ""
-                if status in ("failed", "failure", "error"):
-                    raise RuntimeError(f"视频文案提取失败: {result}")
-                if status not in ("pending", "processing", "running", "queued") and extract_text(result):
-                    break
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError(f"视频文案提取超时: {task_id}")
-                interval = _POLL_INTERVALS[min(attempt, len(_POLL_INTERVALS) - 1)]
-                time.sleep(min(interval, remaining))
+        if meta.get("transcript_call_count", 0) >= _MAX_TRANSCRIPT_CALLS:
+            return
+        task_id = meta.get("transcript_task_id")
+        submit_url = transcript_url(platform, article.url, article_id) if not task_id else None
+        if not task_id and not submit_url:
+            print_warning(f"跳过视频文案提取 {article_id}：链接格式无效")
+            return
+
+        client = _get_client_for("transcript", lambda: RedfoxClient(max_retries=0))
+        endpoint = _ENDPOINTS[platform]
+        api = getattr(client._sdk, endpoint)
+        path = "/story/api/parseWork/audioTextExtract"
+
+        def call(operation, payload, sdk_op):
+            meta["transcript_call_count"] = meta.get("transcript_call_count", 0) + 1
+            article.extinfo = json.dumps(meta, ensure_ascii=False)
+            session.commit()
+            return client._sdk_call(f"{path}/{operation}/{endpoint}", payload, sdk_op)
+
+        if not task_id:
+            task = call("submit", {"workId": article_id}, lambda: api.transcript_submit(url=submit_url))
+            task_id = task["taskId"]
+            meta["transcript_task_id"] = task_id
+            article.extinfo = json.dumps(meta, ensure_ascii=False)
+            session.commit()
+        attempt = 0
+        while meta.get("transcript_call_count", 0) < _MAX_TRANSCRIPT_CALLS:
+            result = call("result", {"taskId": task_id}, lambda: api.transcript_result(task_id=task_id))
+            status = str(result.get("status", result.get("taskStatus", ""))).lower() if isinstance(result, dict) else ""
+            if status in ("failed", "failure", "error"):
+                raise RuntimeError(f"视频文案提取失败: {task_id}")
+            if status not in ("pending", "processing", "running", "queued") and extract_text(result):
+                break
+            if meta["transcript_call_count"] < _MAX_TRANSCRIPT_CALLS:
+                time.sleep(_POLL_INTERVALS[attempt])
                 attempt += 1
         else:
-            raise RuntimeError(f"Redfox SDK 暂不支持 {platform} 视频文案接口")
+            raise TimeoutError(f"视频文案提取已达三次接口调用上限: {task_id}")
         text = extract_text(result)
         if not text:
             raise RuntimeError("视频文案接口返回空文案")
@@ -232,8 +291,11 @@ def preserve_transcript(article, field, value):
         return article.content
     if field == "extinfo":
         updated = _metadata(value)
-        for key in ("video_transcript", "transcript_task_id", "transcript_failed_at"):
+        for key in ("video_transcript", "transcript_task_id", "transcript_failed_at", "transcript_call_count"):
             if key in meta:
-                updated[key] = meta[key]
+                if key == "transcript_call_count":
+                    updated[key] = max(updated.get(key, 0), meta[key])
+                else:
+                    updated[key] = meta[key]
         return json.dumps(updated, ensure_ascii=False)
     return value

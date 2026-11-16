@@ -201,7 +201,12 @@ def _upsert_articles(session, feed_id: str, normalized_notes: List[Dict[str, Any
             session.add(art)
             written += 1
         else:
-            # Q7 metrics_only 部分 UPSERT:  只更新 5 个 metrics + 时间戳
+            # 已入库作品再次出现时，保留采集端提供的签名链接。
+            from core.redfox.transcript import xhs_transcript_url
+            signed_url = xhs_transcript_url(n.get("url"), work_id)
+            if signed_url and n.get("show_type") == 5:
+                art.url = signed_url
+            # 刷新互动指标和时间戳。
             art.liked_count = n.get("liked_count") or 0
             art.comments_count = n.get("comments_count") or 0
             art.collected_count = n.get("collected_count") or 0

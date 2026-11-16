@@ -108,6 +108,7 @@ class RedfoxClient:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout: Optional[int] = None,
+        max_retries: Optional[int] = None,
     ):
         cfg_key = cfg.get("redfox.api_key", "") if cfg else ""
         cfg_url = cfg.get("redfox.base_url", "") if cfg else ""
@@ -137,6 +138,7 @@ class RedfoxClient:
             api_key=self._api_key,
             base_url=self._base_url,
             timeout=int(self._timeout),
+            **({"max_retries": max_retries} if max_retries is not None else {}),
         )
 
     # ------------------------------------------------------------------

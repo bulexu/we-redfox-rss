@@ -8,6 +8,16 @@ from core.redfox.transcript import backfill_transcripts, enrich_direct_transcrip
 
 
 class TranscriptTests(unittest.TestCase):
+    def setUp(self):
+        switch = patch.dict(os.environ, REDFOX_CONVERT_VIDEO='True')
+        switch.start()
+        self.addCleanup(switch.stop)
+
+    def test_disabled_switch_skips_already_queued_task(self):
+        with patch.dict(os.environ, REDFOX_CONVERT_VIDEO='False'), patch('core.db.DB.get_session') as session:
+            fetch_transcript('queued-task')
+            session.assert_not_called()
+
     def test_xhs_unsigned_link_is_not_submitted(self):
         item = dict(id='a', url='https://www.xiaohongshu.com/discovery/item/a',
                     extinfo='{"platform":"xhs","work_type":"video"}')
@@ -44,7 +54,7 @@ class TranscriptTests(unittest.TestCase):
                                           extinfo=json.dumps({'platform': platform}),
                                           description='原介绍', content='原介绍')
                 if platform == 'dy':
-                    article.url = 'https://www.douyin.com/video/123'
+                    article.url = 'https://www.iesdouyin.com/share/video/123/'
                 elif platform == 'bili':
                     article.url = 'https://www.bilibili.com/video/BV123'
                 session = MagicMock()
@@ -62,6 +72,8 @@ class TranscriptTests(unittest.TestCase):
                     fetch_transcript('a')
                     if platform != 'youtube':
                         api.transcript_submit.assert_called_once()
+                        if platform == 'dy':
+                            api.transcript_submit.assert_called_with(url='https://www.douyin.com/video/123')
                         if platform == 'xhs':
                             api.transcript_submit.assert_called_with(url='https://www.xiaohongshu.com/explore/a?xsec_token=test&xsec_source=pc_feed')
                         article.extinfo = json.dumps({'platform': platform, 'transcript_task_id': 'remote-id'})

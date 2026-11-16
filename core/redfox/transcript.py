@@ -71,6 +71,10 @@ def transcript_url(platform, url, work_id):
     host = parts.netloc.lower()
     path = parts.path.rstrip("/")
     if platform == "dy":
+        if host in ("www.iesdouyin.com", "iesdouyin.com") and path.startswith("/share/video/"):
+            video_id = path[len("/share/video/"):]
+            if video_id.isascii() and video_id.isdigit():
+                return f"https://www.douyin.com/video/{video_id}"
         valid = (
             (host in ("www.douyin.com", "douyin.com") and path.startswith(("/video/", "/note/"))
              and path.count("/") == 2 and path.rsplit("/", 1)[-1].isdigit())
@@ -203,6 +207,11 @@ def fetch_transcript(article_id):
     from core.models.article import Article
     from core.redfox.base import RedfoxClient, _get_client_for
 
+    if not video_conversion_enabled():
+        with _lock:
+            _pending.discard(article_id)
+        return
+
     session = DB.get_session()
     try:
         article = session.query(Article).filter(Article.id == article_id).first()
@@ -241,6 +250,8 @@ def fetch_transcript(article_id):
             session.commit()
         attempt = 0
         while meta.get("transcript_call_count", 0) < _MAX_TRANSCRIPT_CALLS:
+            if not video_conversion_enabled():
+                return
             result = call("result", {"taskId": task_id}, lambda: api.transcript_result(task_id=task_id))
             status = str(result.get("status", result.get("taskStatus", ""))).lower() if isinstance(result, dict) else ""
             if status in ("failed", "failure", "error"):

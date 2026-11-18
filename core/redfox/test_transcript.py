@@ -29,6 +29,18 @@ class TranscriptTests(unittest.TestCase):
             add.assert_not_called()
             client.assert_not_called()
 
+    def test_unsigned_xhs_with_existing_task_never_calls_api(self):
+        for query in ('', '?xsec_token=token', '?xsec_source=pc_feed', '?xsec_token=&xsec_source=pc_feed'):
+            item = dict(id='a', url=f'https://www.xiaohongshu.com/explore/a{query}',
+                        extinfo='{"platform":"xhs","work_type":"video","transcript_task_id":"old-id"}')
+            session = MagicMock()
+            session.query.return_value.filter.return_value.first.return_value = SimpleNamespace(status=1, **item)
+            with patch('core.queue.ContentTaskQueue.add_task') as add, patch('core.db.DB.get_session', return_value=session), patch('core.redfox.base._get_client_for') as client:
+                enqueue_transcripts([item])
+                fetch_transcript('a')
+                add.assert_not_called()
+                client.assert_not_called()
+
     def test_switch_and_xhs_type(self):
         items = [dict(id=str(i), title='title', url=f'https://www.xiaohongshu.com/explore/{i}?xsec_token=test&xsec_source=pc_feed', extinfo=json.dumps(meta)) for i, meta in enumerate([
             {'platform': 'xhs', 'work_type': 'normal'},

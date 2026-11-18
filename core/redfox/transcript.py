@@ -117,7 +117,7 @@ def enqueue_transcripts(items):
         if not needs_transcript(meta):
             continue
         key = item["id"]
-        if not meta.get("transcript_task_id") and not transcript_url(platform, item.get("url"), key):
+        if (platform == "xhs" or not meta.get("transcript_task_id")) and not transcript_url(platform, item.get("url"), key):
             continue
         with _lock:
             if key in _pending:
@@ -224,6 +224,9 @@ def fetch_transcript(article_id):
         if platform not in _ENDPOINTS:
             return  # 兼容更新前已入队的任务，不支持的平台不发起接口请求。
         if meta.get("transcript_call_count", 0) >= _MAX_TRANSCRIPT_CALLS:
+            return
+        if platform == "xhs" and not xhs_transcript_url(article.url, article_id):
+            print_warning(f"跳过小红书视频文案提取 {article_id}：缺少完整 xsec 参数")
             return
         task_id = meta.get("transcript_task_id")
         submit_url = transcript_url(platform, article.url, article_id) if not task_id else None
